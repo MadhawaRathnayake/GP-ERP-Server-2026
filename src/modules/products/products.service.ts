@@ -1,13 +1,14 @@
-import type { Prisma } from "#generated/prisma/client.js"
+import { Prisma } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
-import { NotFoundError } from "#http/errors.js"
+import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { CreateProductBody, ListProductsQuery, UpdateProductBody } from "./products.schema.js"
 
-export function listProducts({ sku, includeInactive, ...page }: ListProductsQuery) {
+export function listProducts({ sku, categoryId, includeInactive, ...page }: ListProductsQuery) {
   const where: Prisma.ProductWhereInput = {
     ...(sku && { sku: { contains: sku, mode: "insensitive" } }),
+    ...(categoryId && { categoryId }),
     ...(!includeInactive && { isActive: true }),
   }
   return paginate(
@@ -23,16 +24,34 @@ export async function getProduct(id: string) {
   return product
 }
 
-export function createProduct(data: CreateProductBody, actor: Actor) {
-  return db.product.create({ data: { ...data, createdBy: actor.id } })
+export async function createProduct({ additionalInfo, ...data }: CreateProductBody, actor: Actor) {
+  await assertActiveCategory(data.categoryId)
+  return db.product.create({ data: { ...data, additionalInfo: jsonOrDbNull(additionalInfo), createdBy: actor.id } })
 }
 
 // Unknown id → Prisma P2025 → 404, duplicate sku → P2002 → 409 (platform/http/error-handler.plugin.ts).
-export function updateProduct(id: string, data: UpdateProductBody, actor: Actor) {
-  return db.product.update({ where: { id }, data: { ...data, modifiedBy: actor.id, modifiedAt: new Date() } })
+export async function updateProduct(id: string, { additionalInfo, ...data }: UpdateProductBody, actor: Actor) {
+  if (data.categoryId) await assertActiveCategory(data.categoryId)
+  return db.product.update({
+    where: { id },
+    data: {
+      ...data,
+      ...(additionalInfo !== undefined && { additionalInfo: jsonOrDbNull(additionalInfo) }),
+      modifiedBy: actor.id,
+      modifiedAt: new Date(),
+    },
+  })
 }
 
 /** Products are never deleted: they're deactivated, so their history stays. `PATCH { isActive: true }` restores one. */
 export async function deleteProduct(id: string, actor: Actor) {
   await updateProduct(id, { isActive: false }, actor)
 }
+
+async function assertActiveCategory(id: string) {
+  const category = await db.category.findUnique({ where: { id }, select: { isActive: true } })
+  if (!category?.isActive) throw new BadRequestError(`Category ${id} doesn't exist or is deleted`)
+}
+
+// Prisma writes SQL NULL into a Json column only through Prisma.DbNull; a plain null is rejected.
+const jsonOrDbNull = (value: Prisma.InputJsonObject | null) => value ?? Prisma.DbNull

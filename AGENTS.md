@@ -1,6 +1,6 @@
 # GP ERP Server — Agent Guide
 
-Backend for the GP ERP web app (frontend: sibling folder `../GP-ERP`). Read this file before changing anything. Deeper
+Backend for the GP ERP web app (frontend: sibling folder `../GP-ERP-Client`). Read this file before changing anything. Deeper
 docs: `README.md` (how to add an API, permissions, caching, errors) and `ARCHITECTURE.md` (layers, rules, extending).
 Read the relevant section there instead of guessing.
 
@@ -16,11 +16,13 @@ Read the relevant section there instead of guessing.
 2. **Code quality first. Do only the necessary changes.** Match the surrounding code's style, naming and comment
    density. No drive-by refactors, renames or reformatting.
 3. **Ask before broad changes:** a new dependency, a new top-level folder, a change to `platform/`, or a change across
-   many modules. Explain the plan first.
+   many modules. Explain the plan first. Exception: adding a feature's own permission codes to
+   `src/platform/security/permissions.ts` is a normal part of every new feature (see "Access" below), not a platform
+   change. Do it without asking.
 4. **The database is shared and real (`ERP-DB`).** Never reset, drop or `prisma db push`. Never run `npm run db:seed`,
    insert data, or run `npm run test:int` without asking (the integration tests use `ERP-DB` and use up user ids).
 5. **Secrets:** don't read or print `.env`; use `.env.example` for variable names. Mask passwords in any URL you show.
-6. **Frontend (`../GP-ERP`):** it has its own `AGENTS.md`. Don't edit it unless asked; tell the user which change the
+6. **Frontend (`../GP-ERP-Client`):** it has its own `AGENTS.md`. Don't edit it unless asked; tell the user which change the
    frontend needs.
 7. **Verify before reporting done:** `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` must pass.
    Say what you checked and what you didn't. Update `README.md` / `ARCHITECTURE.md` when behavior or structure changes.
@@ -72,6 +74,25 @@ test/                        helpers.ts · app.test.ts (wiring + access matrix)
 - **Access:** every route under `/api/v1` needs a session by default. `config: { public: true }` or
   `config: { permission: "SCREEN.ACTION" }`. Codes live in `src/platform/security/permissions.ts` (synced to the DB at
   boot). Users get permissions only through their role. Add every new route to the access matrix in `test/app.test.ts`.
+- **Every new feature (screen or entity) gets its own permission group.** Add `<SCREEN>: { VIEW, CREATE, EDIT, DELETE }`
+  to `permissions.ts` (only the actions it has) and use those codes on its routes. Never reuse another screen's codes,
+  even for a closely related feature (categories get `CATEGORIES.*`, not `PRODUCTS.*`); otherwise an admin can't grant
+  it separately in the role editor. New codes are granted to nobody, not even Super Admin, until an admin ticks them in
+  the role editor; say so when you report done.
+
+## New feature checklist
+
+Step-by-step walkthrough with code for every file, backend and frontend: `ADDING-A-FEATURE.md` (Suppliers example).
+Report each item as done or not done. A feature isn't finished until all of them are.
+
+1. Model with the audit columns → `npm run db:migrate`.
+2. Module folder: schema · service · routes · int test (copy `src/modules/customers/`).
+3. Own permission group in `permissions.ts`, used on every route.
+4. Every route in the access matrix (`test/app.test.ts`).
+5. README / ARCHITECTURE updated if behavior or structure changed.
+6. **Frontend handoff** for the user to pass to the frontend agent (`../GP-ERP-Client`): the new endpoints (method,
+   path, body, response), the new permission keys (they go into `PermissionKey` in `src/app/auth.ts` and appear in
+   the role editor), and any changed fields or ids on existing endpoints.
 - **Caching:** `config: { cache: ["Table", …] }` on GET routes, listing every table the response reads. Invalidation is
   automatic (Postgres triggers). Use `cache.remember()` outside routes.
 - **Database changes:** edit `prisma/schema.prisma`, run `npm run db:migrate`. **Never edit an applied migration:**

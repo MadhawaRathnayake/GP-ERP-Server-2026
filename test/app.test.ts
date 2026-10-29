@@ -40,6 +40,8 @@ vi.mock("#security/current-user.js", async (importOriginal) => ({
 let app: App
 const signedIn = { cookie: `sid=${SESSION_ID}` }
 const anId = "00000000-0000-4000-8000-000000000002"
+const aProductId = "PROD000002"
+const aCategoryId = "CAT0002"
 const aUserId = "USER00002"
 
 beforeAll(async () => {
@@ -53,7 +55,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/customers", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -68,10 +70,15 @@ describe("app wiring", () => {
   // Every route that requires a permission, and which one. A route losing its `permission` config fails this test.
   it.each([
     ["GET", "/api/v1/products", "PRODUCTS.VIEW"],
-    ["GET", `/api/v1/products/${anId}`, "PRODUCTS.VIEW"],
+    ["GET", `/api/v1/products/${aProductId}`, "PRODUCTS.VIEW"],
     ["POST", "/api/v1/products", "PRODUCTS.CREATE"],
-    ["PATCH", `/api/v1/products/${anId}`, "PRODUCTS.EDIT"],
-    ["DELETE", `/api/v1/products/${anId}`, "PRODUCTS.DELETE"],
+    ["PATCH", `/api/v1/products/${aProductId}`, "PRODUCTS.EDIT"],
+    ["DELETE", `/api/v1/products/${aProductId}`, "PRODUCTS.DELETE"],
+    ["GET", "/api/v1/categories", "PRODUCTS.VIEW"],
+    ["GET", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.VIEW"],
+    ["POST", "/api/v1/categories", "PRODUCTS.CREATE"],
+    ["PATCH", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.EDIT"],
+    ["DELETE", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.DELETE"],
     ["GET", "/api/v1/customers", "CUSTOMERS.VIEW"],
     ["GET", `/api/v1/customers/${anId}`, "CUSTOMERS.VIEW"],
     ["GET", "/api/v1/users", "ADMIN.VIEW"],
@@ -134,8 +141,8 @@ describe("app wiring", () => {
     expect(Object.keys(userSchema.properties)).toEqual(expect.arrayContaining(["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isActive"]))
     expect(Object.keys(userSchema.properties)).not.toContain("passwordHash")
 
-    const price = spec.paths["/api/v1/products/{id}"].get.responses["200"].content["application/json"].schema.properties.price
-    expect(price.type).toBe("number")
+    const creditLimit = spec.paths["/api/v1/customers/{id}"].get.responses["200"].content["application/json"].schema.properties.creditLimit
+    expect(creditLimit.type).toBe("number")
 
     expect(spec.paths["/api/v1/auth/login"].post.security).toBeUndefined()
   })

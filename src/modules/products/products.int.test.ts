@@ -6,16 +6,19 @@ import { cleanupTestUsers, signIn, startApp, waitForChange, type TestUser } from
 let app: App
 let user: TestUser // can view, create, edit and delete products
 let outsider: TestUser // signed in, no product permissions
+let categoryId: string
 const sku = `TEST-${Date.now()}`
 
 beforeAll(async () => {
   app = await startApp()
   user = await signIn(app, ["PRODUCTS.VIEW", "PRODUCTS.CREATE", "PRODUCTS.EDIT", "PRODUCTS.DELETE"])
   outsider = await signIn(app, ["DASHBOARD.VIEW"])
+  categoryId = (await db.category.create({ data: { name: `TEST-${Date.now()}` } })).id
 })
 
 afterAll(async () => {
   await db.product.deleteMany({ where: { sku: { startsWith: "TEST-" } } })
+  await db.category.deleteMany({ where: { name: { startsWith: "TEST-" } } })
   await cleanupTestUsers()
   await app.close()
 })
@@ -35,33 +38,45 @@ describe("products", () => {
     expect(res.json().error.details).toEqual({ permission: "PRODUCTS.VIEW" })
   })
 
-  it("creates a product (Decimal money in, number out)", async () => {
+  it("creates a product with a PROD id and defaults", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/products",
       headers: { cookie: user.cookie },
-      payload: { sku, name: "Test item", price: 10.5, cost: 7 },
+      payload: { sku, title: "Test item", categoryId, warrantyMonths: 12, trackingType: "serial", additionalInfo: { colour: "black" } },
     })
     expect(res.statusCode).toBe(201)
-    expect(res.json()).toMatchObject({ sku, price: 10.5, cost: 7, status: "active", stock: 0 })
+    expect(res.json()).toMatchObject({ sku, description: "N/A", stockInHand: 0, additionalInfo: { colour: "black" }, createdBy: user.id })
+    expect(res.json().id).toMatch(/^PROD\d{6,}$/)
     id = res.json().id
   })
 
   it("rejects a duplicate sku with 409", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/v1/products", headers: { cookie: user.cookie }, payload: { sku, name: "Dup", price: 1, cost: 1 } })
-    expect(res.statusCode).toBe(409)
+    const payload = { sku, title: "Dup", categoryId, warrantyMonths: 0, trackingType: "quantity" }
+    expect((await app.inject({ method: "POST", url: "/api/v1/products", headers: { cookie: user.cookie }, payload })).statusCode).toBe(409)
+  })
+
+  it("rejects an unknown category with 400", async () => {
+    const payload = { sku: `${sku}-X`, title: "X", categoryId: "CAT9999999", warrantyMonths: 0, trackingType: "quantity" }
+    const res = await app.inject({ method: "POST", url: "/api/v1/products", headers: { cookie: user.cookie }, payload })
+    expect(res.statusCode).toBe(400)
   })
 
   it("returns 400 with details for an invalid body", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/v1/products", headers: { cookie: user.cookie }, payload: { sku: "", price: -1 } })
+    const res = await app.inject({ method: "POST", url: "/api/v1/products", headers: { cookie: user.cookie }, payload: { sku: "", warrantyMonths: -1 } })
     expect(res.statusCode).toBe(400)
     expect(res.json().error.code).toBe("VALIDATION_ERROR")
   })
 
-  it("lists with sku filter in the { data, total } shape", async () => {
-    const res = await app.inject({ url: `/api/v1/products?sku=${sku}&page=1&limit=5`, headers: { cookie: user.cookie } })
+  it("lists with sku and category filters in the { data, total } shape", async () => {
+    const res = await app.inject({ url: `/api/v1/products?sku=${sku}&categoryId=${categoryId}&page=1&limit=5`, headers: { cookie: user.cookie } })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toMatchObject({ total: 1, data: [{ id, sku, price: 10.5 }] })
+    expect(res.json()).toMatchObject({ total: 1, data: [{ id, sku }] })
+  })
+
+  it("clears additionalInfo with null", async () => {
+    const res = await app.inject({ method: "PATCH", url: `/api/v1/products/${id}`, headers: { cookie: user.cookie }, payload: { additionalInfo: null } })
+    expect(res.json()).toMatchObject({ additionalInfo: null, modifiedBy: user.id })
   })
 
   it("serves repeat reads from Redis and refreshes after a DB change made outside the app", async () => {
@@ -71,12 +86,12 @@ describe("products", () => {
 
     const changed = waitForChange("Product")
     // Raw SQL, bypassing services: only the trigger can notice this.
-    await db.$executeRaw`UPDATE "Product" SET price = 99 WHERE id = ${id}::uuid`
+    await db.$executeRaw`UPDATE "Product" SET "warrantyMonths" = 24 WHERE id = ${id}`
     await changed
 
     const res = await app.inject({ url, headers: { cookie: user.cookie } })
     expect(res.headers["x-cache"]).toBe("MISS")
-    expect(res.json().price).toBe(99)
+    expect(res.json().warrantyMonths).toBe(24)
   })
 
   it("checks access before serving a cached response", async () => {
@@ -85,7 +100,7 @@ describe("products", () => {
   })
 
   it("404s for an unknown id", async () => {
-    const res = await app.inject({ url: "/api/v1/products/00000000-0000-4000-8000-000000000000", headers: { cookie: user.cookie } })
+    const res = await app.inject({ url: "/api/v1/products/PROD9999999", headers: { cookie: user.cookie } })
     expect(res.statusCode).toBe(404)
   })
 

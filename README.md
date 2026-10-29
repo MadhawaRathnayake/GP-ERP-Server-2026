@@ -90,7 +90,7 @@ Every log line for the request carries the same `reqId`, which is also returned 
 
 ## Adding an API (example: customers)
 
-`src/modules/customers/` is the reference. A new feature touches only these places.
+`src/modules/customers/` is the reference. A new feature touches only these places. For the full walkthrough, backend and frontend with code for every file, see [ADDING-A-FEATURE.md](ADDING-A-FEATURE.md).
 
 **1. Model** in `prisma/schema.prisma`. The model name is the table name; don't use `@@map`.
 ```prisma
@@ -134,7 +134,7 @@ app.get("/", {
 }, (req) => listCustomers(req.query))
 ```
 
-**5. Permission**: add the codes to `src/platform/security/permissions.ts`, e.g. `CUSTOMERS: { VIEW: "View customers" }`. The `Permission` table row is created automatically at the next boot. Grant it to a role, and add the route to the access matrix in `test/app.test.ts`.
+**5. Permission**: give the feature its own group in `src/platform/security/permissions.ts`, e.g. `CUSTOMERS: { VIEW: "View customers" }`. Don't reuse another screen's codes, so it can be granted separately. The `Permission` table row is created automatically at the next boot, but no role has it yet, not even Super Admin: grant it in the role editor. Add the route to the access matrix in `test/app.test.ts`.
 
 The route is now at `/api/v1/customers`. It's in `/docs`, protected, cached, and cleared on every change to the Customer table. You don't edit `app.ts`, the error handler, any cache wiring or any trigger SQL.
 
@@ -184,7 +184,8 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - Both hold the acting user's id and are never accepted from the client.
   - The first user, created by the seed, is their own creator.
 - **Delete is soft.** `DELETE /api/v1/users/:id` sets `isActive = false` and ends all of the user's sessions. The row and its history stay.
-  Products work the same way: `DELETE /api/v1/products/:id` sets `isActive = false`, lists hide them unless `?includeInactive=true`, and `PATCH { isActive: true }` restores one.
+  Products and categories work the same way: `DELETE /api/v1/products/:id` (or `/categories/:id`) sets `isActive = false`, lists hide them unless `?includeInactive=true`, and `PATCH { isActive: true }` restores one. A category that active products still use can't be deleted (409).
+  Product ids are `PROD000001…` and category ids `CAT0001…` (`next_product_id()` / `next_category_id()`). Product stock columns aren't accepted from clients: they're running totals of `StockMovement`.
   - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeInactive=true`.
   - `PATCH { isActive: true }` restores a user.
   - A deleted user's email stays taken.
