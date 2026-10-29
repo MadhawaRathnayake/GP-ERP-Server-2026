@@ -1,0 +1,96 @@
+{
+  "name": "gp-erp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#app.js": {
+      "development": "./src/app.ts",
+      "default": "./dist/src/app.js"
+    },
+    "#config/*": {
+      "development": "./src/config/*",
+      "default": "./dist/src/config/*"
+    },
+    "#core/*": {
+      "development": "./src/platform/core/*",
+      "default": "./dist/src/platform/core/*"
+    },
+    "#cache/*": {
+      "development": "./src/platform/cache/*",
+      "default": "./dist/src/platform/cache/*"
+    },
+    "#http/*": {
+      "development": "./src/platform/http/*",
+      "default": "./dist/src/platform/http/*"
+    },
+    "#security/*": {
+      "development": "./src/platform/security/*",
+      "default": "./dist/src/platform/security/*"
+    },
+    "#modules/*": {
+      "development": "./src/modules/*",
+      "default": "./dist/src/modules/*"
+    },
+    "#generated/*": {
+      "development": "./src/generated/*",
+      "default": "./dist/src/generated/*"
+    },
+    "#test/*": {
+      "development": "./test/*"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --conditions=development --inspect --clear-screen=false src/server.ts",
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/src/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "db:migrate": "tsx --conditions=development scripts/migrate.ts",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/swagger": "^9.9.2",
+    "@fastify/swagger-ui": "^6.1.2",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.9",
+    "fastify": "^5.12.7",
+    "fastify-plugin": "^6.0.1",
+    "fastify-type-provider-zod": "^7.0.0",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true,
+    "esbuild@0.28.2": true
+  }
+}

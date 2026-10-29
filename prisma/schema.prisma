@@ -1,0 +1,297 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Conventions
+// - Model name = table name (no @@map), so `config: { cache: ["Customer"] }` and DB change events use the same names.
+// - Every table gets a notify_change trigger from `npm run db:migrate` (cache invalidation). Never use `prisma db push`.
+// - Timestamps: @db.Timestamptz(3), stored in UTC. Money: Decimal @db.Decimal(14, 2) + `money` from platform/http/fields.ts.
+// - Every table except Session ends with the audit columns, in this order:
+//     createdBy · createdAt · modifiedBy · modifiedAt · isActive
+//   createdBy/modifiedBy are user ids set from the actor, never from clients. NULL = written by the system (boot sync,
+//   seed, defaults); only User.createdBy is required. modifiedAt is NULL until the first change. isActive = false is a
+//   soft delete. Users are never deleted, so `onDelete: SetNull` only matters when a user row is removed by hand (tests).
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+// Single-row table (id = 1) holding company-wide business settings. See modules/settings.
+model Setting {
+  id         Int       @id @default(1)
+  currency   String    @db.Char(3) // ISO 4217, e.g. LKR
+  country    String    @db.Char(2) // ISO 3166-1 alpha-2, e.g. LK
+  timezone   String // IANA, e.g. Asia/Colombo
+  creator    User?     @relation("SettingCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  modifier   User?     @relation("SettingModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy String?
+  modifiedAt DateTime? @db.Timestamptz(3)
+  isActive   Boolean   @default(true)
+}
+
+// ─── Access control ──────────────────────────────────────────────────────────
+// Every user has exactly one role, and the role's permissions are the user's permissions.
+// Routes require one with `config: { permission: "PRODUCTS.CREATE" }`; the codes are defined in platform/security/permissions.ts
+// and synced into Permission at boot.
+
+// Users are never deleted: "deleting" sets isActive = false. Ids are USER00001, USER00002, … (next_user_id() in the
+// init migration). createdBy/modifiedBy hold the id of the user who made the change.
+model User {
+  id           String    @id @default(dbgenerated("next_user_id()"))
+  email        String    @unique // stored lower-case; deactivated users keep theirs
+  name         String
+  passwordHash String // platform/security/password.ts; never selected unless asked for (global omit in platform/core/db.ts)
+  roleId       String    @db.Uuid
+  role         Role      @relation("UserRole", fields: [roleId], references: [id], onDelete: Restrict) // a role in use can't be deleted
+  creator      User      @relation("UserCreatedBy", fields: [createdBy], references: [id], onDelete: NoAction)
+  createdBy    String
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  modifier     User?     @relation("UserModifiedBy", fields: [modifiedBy], references: [id], onDelete: NoAction)
+  modifiedBy   String?
+  modifiedAt   DateTime? @db.Timestamptz(3)
+  isActive     Boolean   @default(true)
+  sessions     Session[]
+
+  // Rows this user created or last modified (the other side of every table's createdBy/modifiedBy).
+  createdUsers            User[]           @relation("UserCreatedBy")
+  modifiedUsers           User[]           @relation("UserModifiedBy")
+  createdSettings         Setting[]        @relation("SettingCreatedBy")
+  modifiedSettings        Setting[]        @relation("SettingModifiedBy")
+  createdRoles            Role[]           @relation("RoleCreatedBy")
+  modifiedRoles           Role[]           @relation("RoleModifiedBy")
+  createdPermissions      Permission[]     @relation("PermissionCreatedBy")
+  modifiedPermissions     Permission[]     @relation("PermissionModifiedBy")
+  createdRolePermissions  RolePermission[] @relation("RolePermissionCreatedBy")
+  modifiedRolePermissions RolePermission[] @relation("RolePermissionModifiedBy")
+  createdCategories       Category[]       @relation("CategoryCreatedBy")
+  modifiedCategories      Category[]       @relation("CategoryModifiedBy")
+  createdProducts         Product[]        @relation("ProductCreatedBy")
+  modifiedProducts        Product[]        @relation("ProductModifiedBy")
+  createdPriceMovements   PriceMovement[]  @relation("PriceMovementCreatedBy")
+  modifiedPriceMovements  PriceMovement[]  @relation("PriceMovementModifiedBy")
+  createdCostMovements    CostMovement[]   @relation("CostMovementCreatedBy")
+  modifiedCostMovements   CostMovement[]   @relation("CostMovementModifiedBy")
+  createdStockMovements   StockMovement[]  @relation("StockMovementCreatedBy")
+  modifiedStockMovements  StockMovement[]  @relation("StockMovementModifiedBy")
+  createdCustomers        Customer[]       @relation("CustomerCreatedBy")
+  modifiedCustomers       Customer[]       @relation("CustomerModifiedBy")
+
+  @@index([roleId])
+}
+
+// Signed-in sessions; Redis caches them in front of this table. See platform/security/sessions.ts.
+// The only table without the audit columns.
+model Session {
+  id        String   @id // SHA-256 of the id in the cookie, so a leaked row can't be used to sign in
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3) // slides with activity; expired rows are deleted on the next sign-in
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
+  description String           @default("")
+  permissions RolePermission[]
+  users       User[]           @relation("UserRole")
+  creator     User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy   String?
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  modifier    User?            @relation("RoleModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy  String?
+  modifiedAt  DateTime?        @db.Timestamptz(3)
+  isActive    Boolean          @default(true)
+}
+
+// One row per (screen, permission) pair, e.g. PRODUCTS / CREATE. Rows are created from platform/security/permissions.ts at boot.
+model Permission {
+  id             Int              @id @default(autoincrement())
+  screenCode     String
+  permissionCode String
+  description    String           @default("")
+  roles          RolePermission[]
+  creator        User?            @relation("PermissionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy      String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  modifier       User?            @relation("PermissionModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy     String?
+  modifiedAt     DateTime?        @db.Timestamptz(3)
+  isActive       Boolean          @default(true)
+
+  @@unique([screenCode, permissionCode])
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId Int
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  creator      User?      @relation("RolePermissionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy    String?
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  modifier     User?      @relation("RolePermissionModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy   String?
+  modifiedAt   DateTime?  @db.Timestamptz(3)
+  isActive     Boolean    @default(true)
+
+  @@id([roleId, permissionId])
+}
+
+// ─── Catalogue ───────────────────────────────────────────────────────────────
+
+// Ids are CAT0001, CAT0002, … (next_category_id(), hand-written SQL like next_user_id()).
+model Category {
+  id          String    @id @default(dbgenerated("next_category_id()"))
+  name        String    @unique
+  description String    @default("")
+  products    Product[]
+  creator     User?     @relation("CategoryCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  modifier    User?     @relation("CategoryModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy  String?
+  modifiedAt  DateTime? @db.Timestamptz(3)
+  isActive    Boolean   @default(true)
+}
+
+enum TrackingType {
+  quantity // counted only
+  serial // every unit has its own serial number
+}
+
+// Ids are PROD000001, PROD000002, … (next_product_id(), hand-written SQL like next_user_id()).
+// Price and cost live in PriceMovement / CostMovement (the latest row is the current value); the stock columns are
+// running totals of StockMovement. isActive = false means deleted.
+model Product {
+  id              String          @id @default(dbgenerated("next_product_id()"))
+  sku             String          @unique // deleted products keep theirs
+  title           String
+  description     String          @default("N/A")
+  categoryId      String
+  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  manufacturer    String?
+  countryOfOrigin String?
+  imageUrl        String?
+  documentUrl     String?
+  slug            String?
+  warrantyMonths  Int
+  minimumStock    Int             @default(0)
+  stockInHand     Int             @default(0)
+  stockPreOrder   Int             @default(0)
+  stockInTransit  Int             @default(0)
+  stockOnArrival  Int             @default(0)
+  additionalInfo  Json? // jsonb
+  trackingType    TrackingType
+  priceMovements  PriceMovement[]
+  costMovements   CostMovement[]
+  stockMovements  StockMovement[]
+  creator         User?           @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy       String?
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  modifier        User?           @relation("ProductModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy      String?
+  modifiedAt      DateTime?       @db.Timestamptz(3)
+  isActive        Boolean         @default(true)
+
+  @@index([categoryId])
+}
+
+// Movement tables are history: one row per change, appended and never edited. A product with history can't be
+// removed (Restrict); deactivate it instead.
+
+// Selling price history.
+model PriceMovement {
+  id            Int       @id @default(autoincrement())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  price         Decimal   @db.Decimal(14, 2)
+  remarks       String?
+  createdBy     String?
+  creator       User?     @relation("PriceMovementCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  modifiedBy    String?
+  modifier      User?     @relation("PriceMovementModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedAt    DateTime? @db.Timestamptz(3)
+  isActive      Boolean   @default(true)
+
+  @@index([productId, createdAt])
+}
+
+// Unit cost history.
+model CostMovement {
+  id           Int       @id @default(autoincrement())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  cost         Decimal   @db.Decimal(14, 2)
+  remarks      String?
+  createdBy    String?
+  creator      User?     @relation("CostMovementCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  modifiedBy   String?
+  modifier     User?     @relation("CostMovementModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedAt   DateTime? @db.Timestamptz(3)
+  isActive     Boolean   @default(true)
+
+  @@index([productId, createdAt])
+}
+
+// Which Product stock column a movement changes.
+enum StockBucket {
+  inHand
+  preOrder
+  inTransit
+  onArrival
+}
+
+// Every change to a Product stock column, e.g. +10 inTransit when goods ship, then -10 inTransit / +10 inHand on arrival.
+model StockMovement {
+  id           Int         @id @default(autoincrement())
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  bucket       StockBucket
+  quantity     Int // signed: + adds to the bucket, - takes from it
+  balanceAfter Int // the bucket's value after this movement
+  serialNumber String? // for TrackingType.serial products
+  reference    String? // PLACEHOLDER: source document (GRN, invoice, adjustment no.); replace with real FKs later
+  remarks      String?
+  creator      User?       @relation("StockMovementCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy    String?
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  modifier     User?       @relation("StockMovementModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy   String?
+  modifiedAt   DateTime?   @db.Timestamptz(3)
+  isActive     Boolean     @default(true)
+
+  @@index([productId, createdAt])
+  @@index([serialNumber])
+}
+
+// ─── Sales ───────────────────────────────────────────────────────────────────
+
+// PLACEHOLDER: customer fields are a minimal guess. Replace with the real customer data model
+// (addresses, tax id, payment terms, price list, sales rep, ...), then update modules/customers/customers.schema.ts.
+model Customer {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique // PLACEHOLDER: customer number format (e.g. CUS-00001)?
+  name        String
+  email       String?
+  phone       String?
+  creditLimit Decimal   @default(0) @db.Decimal(14, 2)
+  creator     User?     @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  modifier    User?     @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy  String?
+  modifiedAt  DateTime? @db.Timestamptz(3)
+  isActive    Boolean   @default(true)
+}
