@@ -170,8 +170,8 @@ enum TrackingType {
 }
 
 // Ids are PROD000001, PROD000002, … (next_product_id(), hand-written SQL like next_user_id()).
-// Price and cost live in PriceMovement / CostMovement (the latest row is the current value); the stock columns are
-// running totals of StockMovement. isActive = false means deleted.
+// price, cost and the stock columns are the current values; every change to them is also recorded in PriceMovement,
+// CostMovement or StockMovement (products.service.ts). isActive = false means deleted.
 model Product {
   id              String          @id @default(dbgenerated("next_product_id()"))
   sku             String          @unique // deleted products keep theirs
@@ -185,12 +185,14 @@ model Product {
   documentUrl     String?
   slug            String?
   warrantyMonths  Int
+  price           Decimal         @default(0) @db.Decimal(14, 2)
+  cost            Decimal         @default(0) @db.Decimal(14, 2)
   minimumStock    Int             @default(0)
   stockInHand     Int             @default(0)
   stockPreOrder   Int             @default(0)
   stockInTransit  Int             @default(0)
   stockOnArrival  Int             @default(0)
-  additionalInfo  Json? // jsonb
+  additionalInfo  String?
   trackingType    TrackingType
   priceMovements  PriceMovement[]
   costMovements   CostMovement[]
@@ -214,6 +216,7 @@ model PriceMovement {
   id            Int       @id @default(autoincrement())
   productId     String
   product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  previousPrice Decimal?  @db.Decimal(14, 2) // NULL for the first price
   price         Decimal   @db.Decimal(14, 2)
   remarks       String?
   createdBy     String?
@@ -232,6 +235,7 @@ model CostMovement {
   id           Int       @id @default(autoincrement())
   productId    String
   product      Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  previousCost Decimal?  @db.Decimal(14, 2) // NULL for the first cost
   cost         Decimal   @db.Decimal(14, 2)
   remarks      String?
   createdBy    String?

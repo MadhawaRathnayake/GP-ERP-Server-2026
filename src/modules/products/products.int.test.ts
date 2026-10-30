@@ -17,6 +17,10 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  const testProduct = { product: { sku: { startsWith: "TEST-" } } }
+  await db.priceMovement.deleteMany({ where: testProduct })
+  await db.costMovement.deleteMany({ where: testProduct })
+  await db.stockMovement.deleteMany({ where: testProduct })
   await db.product.deleteMany({ where: { sku: { startsWith: "TEST-" } } })
   await db.category.deleteMany({ where: { name: { startsWith: "TEST-" } } })
   await cleanupTestUsers()
@@ -38,17 +42,40 @@ describe("products", () => {
     expect(res.json().error.details).toEqual({ permission: "PRODUCTS.VIEW" })
   })
 
-  it("creates a product with a PROD id and defaults", async () => {
+  it("creates a product with a PROD id and records its opening price, cost and stock", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/products",
       headers: { cookie: user.cookie },
-      payload: { sku, title: "Test item", categoryId, warrantyMonths: 12, trackingType: "serial", additionalInfo: { colour: "black" } },
+      payload: { sku, title: "Test item", categoryId, warrantyMonths: 12, trackingType: "serial", price: 10.5, cost: 7, stockInHand: 5, additionalInfo: "Black" },
     })
     expect(res.statusCode).toBe(201)
-    expect(res.json()).toMatchObject({ sku, description: "N/A", stockInHand: 0, additionalInfo: { colour: "black" }, createdBy: user.id })
+    expect(res.json()).toMatchObject({ sku, description: "N/A", price: 10.5, cost: 7, stockInHand: 5, stockPreOrder: 0, additionalInfo: "Black", createdBy: user.id })
     expect(res.json().id).toMatch(/^PROD\d{6,}$/)
     id = res.json().id
+
+    const price = await db.priceMovement.findMany({ where: { productId: id } })
+    expect(price.map((m) => [m.previousPrice, m.price.toNumber()])).toEqual([[null, 10.5]])
+    expect(await db.costMovement.count({ where: { productId: id } })).toBe(1)
+    // Only buckets that aren't 0.
+    const stock = await db.stockMovement.findMany({ where: { productId: id } })
+    expect(stock.map((m) => [m.bucket, m.quantity, m.balanceAfter])).toEqual([["inHand", 5, 5]])
+  })
+
+  it("records a movement for each changed price, cost or stock value, and none for unchanged ones", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${id}`,
+      headers: { cookie: user.cookie },
+      payload: { price: 12, cost: 7, stockInHand: 3, stockInTransit: 4 },
+    })
+    expect(res.json()).toMatchObject({ price: 12, cost: 7, stockInHand: 3, stockInTransit: 4 })
+
+    const price = await db.priceMovement.findMany({ where: { productId: id }, orderBy: { id: "asc" } })
+    expect(price.map((m) => [m.previousPrice?.toNumber() ?? null, m.price.toNumber()])).toEqual([[null, 10.5], [10.5, 12]])
+    expect(await db.costMovement.count({ where: { productId: id } })).toBe(1)
+    const stock = await db.stockMovement.findMany({ where: { productId: id }, orderBy: { id: "asc" } })
+    expect(stock.slice(1).map((m) => [m.bucket, m.quantity, m.balanceAfter])).toEqual([["inHand", -2, 3], ["inTransit", 4, 4]])
   })
 
   it("rejects a duplicate sku with 409", async () => {

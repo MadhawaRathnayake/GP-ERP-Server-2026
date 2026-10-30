@@ -5,11 +5,15 @@ const required = { sku: "A", title: "A", categoryId: "CAT0001", warrantyMonths: 
 
 describe("product bodies", () => {
   it("fills defaults on create", () => {
-    expect(createProductBody.parse(required)).toMatchObject({ description: "N/A", minimumStock: 0, manufacturer: null, additionalInfo: null })
+    const body = createProductBody.parse(required)
+    expect(body).toMatchObject({ description: "N/A", minimumStock: 0, stockInHand: 0, stockOnArrival: 0, additionalInfo: null })
+    expect(body.price.toNumber()).toBe(0)
+    expect(body.cost.toNumber()).toBe(0)
   })
 
-  it("doesn't accept stock columns (they come from stock movements)", () => {
-    expect(createProductBody.parse({ ...required, stockInHand: 5 })).not.toHaveProperty("stockInHand")
+  it("rejects negative price and stock", () => {
+    expect(createProductBody.safeParse({ ...required, price: -1 }).success).toBe(false)
+    expect(createProductBody.safeParse({ ...required, stockInHand: -1 }).success).toBe(false)
   })
 
   it("leaves fields that a PATCH doesn't send untouched", () => {

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { money } from "#http/fields.js"
 import { pageQuery, pageResult } from "#http/pagination.js"
 import { IMAGE_TYPES, type ImageType } from "./products.images.js"
 
@@ -21,13 +22,14 @@ export const product = z.object({
   documentUrl: z.string().nullable(),
   slug: z.string().nullable(),
   warrantyMonths: z.number().int(),
+  price: money,
+  cost: money,
   minimumStock: z.number().int(),
   stockInHand: z.number().int(),
   stockPreOrder: z.number().int(),
   stockInTransit: z.number().int(),
   stockOnArrival: z.number().int(),
-  // z.unknown(): Prisma's JsonValue doesn't fit z.json()'s type. It's always an object or null (see productFields).
-  additionalInfo: z.unknown().meta({ type: ["object", "null"] }),
+  additionalInfo: z.string().nullable(),
   trackingType,
   createdBy: z.string().nullable(),
   createdAt: z.date(),
@@ -44,7 +46,10 @@ export const listProductsQuery = pageQuery.extend({
   includeInactive: z.stringbool().default(false).describe("Include deactivated (deleted) products"),
 })
 
-// The stock columns aren't here: they're running totals of StockMovement, never set directly.
+const amount = money.refine((value) => value.gte(0), "Must be 0 or more")
+const stock = z.number().int().nonnegative()
+
+// Changing price, cost or a stock column also records a Price/Cost/StockMovement (products.service.ts).
 const productFields = z.object({
   sku: z.string().trim().min(1).max(64),
   title: z.string().trim().min(1).max(200),
@@ -56,8 +61,14 @@ const productFields = z.object({
   documentUrl: z.url().nullable(),
   slug: z.string().trim().min(1).max(200).nullable(),
   warrantyMonths: z.number().int().nonnegative(),
+  price: amount,
+  cost: amount,
   minimumStock: z.number().int().nonnegative(),
-  additionalInfo: z.record(z.string(), z.json()).nullable().describe("Free-form attributes, stored as jsonb"),
+  stockInHand: stock,
+  stockPreOrder: stock,
+  stockInTransit: stock,
+  stockOnArrival: stock,
+  additionalInfo: z.string().trim().min(1).max(5000).nullable(),
   trackingType,
 })
 
@@ -68,12 +79,18 @@ export const createProductBody = productFields.extend({
   imageUrl: productFields.shape.imageUrl.default(null),
   documentUrl: productFields.shape.documentUrl.default(null),
   slug: productFields.shape.slug.default(null),
+  price: amount.prefault(0),
+  cost: amount.prefault(0),
   minimumStock: productFields.shape.minimumStock.default(0),
+  stockInHand: stock.default(0),
+  stockPreOrder: stock.default(0),
+  stockInTransit: stock.default(0),
+  stockOnArrival: stock.default(0),
   additionalInfo: productFields.shape.additionalInfo.default(null),
 })
 
 // From the fields without defaults: `createProductBody.partial()` would keep them, so a PATCH that only renames a
-// product would reset its description and minimum stock.
+// product would reset its description, price and stock.
 export const updateProductBody = productFields
   .extend({ isActive: z.boolean().describe("false = deleted: hidden from lists by default") })
   .partial()

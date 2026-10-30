@@ -4,3 +4,12 @@ dist
 src/generated
 *.log
 .claude/settings.local.json
+coverage
+
+# Redis snapshot written by a local redis-server
+dump.rdb
+
+# Editor and OS files (.vscode/launch.json stays: it's the shared debug config)
+.idea
+.DS_Store
+Thumbs.db
