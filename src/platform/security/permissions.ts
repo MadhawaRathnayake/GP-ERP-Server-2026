@@ -8,6 +8,12 @@ import { z } from "zod"
 //
 // To add one: add a line here, put it on a route, grant it to a role. A typo in a route is a compile error.
 export const PERMISSIONS = {
+  ADMIN: {
+    VIEW: "Open the admin screen (users and roles)",
+    MANAGE_USERS: "Create, edit and deactivate users",
+    MANAGE_ROLES: "Create and edit roles",
+    EDIT_SETTINGS: "Change company settings (currency, country, timezone)",
+  },
   DASHBOARD: { VIEW: "Open the dashboard" },
   PRODUCTS: {
     VIEW: "View products",
@@ -15,14 +21,14 @@ export const PERMISSIONS = {
     EDIT: "Edit products",
     DELETE: "Delete products",
   },
+  CATEGORY: {
+    VIEW: "View category",
+    CREATE: "Create category",
+    EDIT: "Edit category",
+    DELETE: "Delete category",
+  },
   CUSTOMERS: { VIEW: "View customers" },
   REPORTS: { VIEW: "Open reports" },
-  ADMIN: {
-    VIEW: "Open the admin screen (users and roles)",
-    MANAGE_USERS: "Create, edit and deactivate users",
-    MANAGE_ROLES: "Create and edit roles",
-    EDIT_SETTINGS: "Change company settings (currency, country, timezone)",
-  },
 } as const satisfies Record<string, Record<string, string>>
 
 export type ScreenCode = keyof typeof PERMISSIONS

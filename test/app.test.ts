@@ -72,6 +72,7 @@ describe("app wiring", () => {
     ["GET", "/api/v1/products", "PRODUCTS.VIEW"],
     ["GET", `/api/v1/products/${aProductId}`, "PRODUCTS.VIEW"],
     ["POST", "/api/v1/products", "PRODUCTS.CREATE"],
+    ["POST", "/api/v1/products/image-upload-url", "PRODUCTS.EDIT"],
     ["PATCH", `/api/v1/products/${aProductId}`, "PRODUCTS.EDIT"],
     ["DELETE", `/api/v1/products/${aProductId}`, "PRODUCTS.DELETE"],
     ["GET", "/api/v1/categories", "PRODUCTS.VIEW"],

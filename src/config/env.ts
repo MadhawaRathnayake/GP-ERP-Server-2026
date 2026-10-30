@@ -24,6 +24,14 @@ const schema = z.object({
   COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
   COOKIE_SECURE: z.stringbool().default(false),
 
+  // Cloudflare R2 (S3-compatible) for product images. Keys: R2 → Manage R2 API Tokens.
+  R2_ACCOUNT_ID: z.string().min(1),
+  R2_ACCESS_KEY_ID: z.string().min(1),
+  R2_SECRET_ACCESS_KEY: z.string().min(1),
+  R2_BUCKET: z.string().min(1),
+  // Public base URL of the bucket (r2.dev or custom domain)
+  R2_PUBLIC_URL: z.url().transform((url) => url.replace(/\/$/, "")),
+
   DEFAULT_CURRENCY: z.string().length(3).toUpperCase().default("LKR"),
   DEFAULT_COUNTRY: z.string().length(2).toUpperCase().default("LK"),
   DEFAULT_TIMEZONE: z.string().default("Asia/Colombo"),

@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { pageQuery, pageResult } from "#http/pagination.js"
+import { IMAGE_TYPES, type ImageType } from "./products.images.js"
 
 const productId = z.string().regex(/^PROD\d{6,}$/, "Must be a product id like PROD000001")
 const categoryId = z.string().regex(/^CAT\d{4,}$/, "Must be a category id like CAT0001")
@@ -76,6 +77,16 @@ export const createProductBody = productFields.extend({
 export const updateProductBody = productFields
   .extend({ isActive: z.boolean().describe("false = deleted: hidden from lists by default") })
   .partial()
+
+export const imageUploadBody = z.object({
+  contentType: z.enum(Object.keys(IMAGE_TYPES) as [ImageType, ...ImageType[]]),
+})
+
+export const imageUpload = z.object({
+  uploadUrl: z.url().describe("PUT the file here with the same Content-Type header; expires after expiresIn seconds"),
+  publicUrl: z.url().describe("Save this as the product's imageUrl once the upload succeeds"),
+  expiresIn: z.number().int(),
+})
 
 export type ListProductsQuery = z.infer<typeof listProductsQuery>
 export type CreateProductBody = z.infer<typeof createProductBody>

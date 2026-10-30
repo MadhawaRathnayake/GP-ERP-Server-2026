@@ -1,6 +1,16 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { actorOf } from "#security/auth.plugin.js"
-import { createProductBody, listProductsQuery, product, productIdParams, productPage, updateProductBody } from "./products.schema.js"
+import { createImageUploadUrl } from "./products.images.js"
+import {
+  createProductBody,
+  imageUpload,
+  imageUploadBody,
+  listProductsQuery,
+  product,
+  productIdParams,
+  productPage,
+  updateProductBody,
+} from "./products.schema.js"
 import { createProduct, deleteProduct, getProduct, listProducts, updateProduct } from "./products.service.js"
 
 const routes: FastifyPluginAsyncZod = async (app) => {
@@ -29,6 +39,16 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "PRODUCTS.CREATE" },
     },
     async (req, reply) => reply.status(201).send(await createProduct(req.body, actorOf(req))),
+  )
+
+  // Step 1 of saving an image: the browser PUTs the file to uploadUrl, then sends publicUrl as imageUrl.
+  app.post(
+    "/image-upload-url",
+    {
+      schema: { body: imageUploadBody, response: { 200: imageUpload } },
+      config: { permission: "PRODUCTS.EDIT" },
+    },
+    (req) => createImageUploadUrl(req.body.contentType),
   )
 
   app.patch(

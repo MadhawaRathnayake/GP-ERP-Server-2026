@@ -186,6 +186,7 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 - **Delete is soft.** `DELETE /api/v1/users/:id` sets `isActive = false` and ends all of the user's sessions. The row and its history stay.
   Products and categories work the same way: `DELETE /api/v1/products/:id` (or `/categories/:id`) sets `isActive = false`, lists hide them unless `?includeInactive=true`, and `PATCH { isActive: true }` restores one. A category that active products still use can't be deleted (409).
   Product ids are `PROD000001…` and category ids `CAT0001…` (`next_product_id()` / `next_category_id()`). Product stock columns aren't accepted from clients: they're running totals of `StockMovement`.
+  Product images go straight from the browser to Cloudflare R2: `POST /api/v1/products/image-upload-url { contentType }` returns a 5-minute signed `uploadUrl` (PUT the file there with the same `Content-Type`) and the `publicUrl` to save as `imageUrl`. The bucket needs a CORS rule allowing `PUT` from the frontend origin (`R2_*` in `.env.example`).
   - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeInactive=true`.
   - `PATCH { isActive: true }` restores a user.
   - A deleted user's email stays taken.
