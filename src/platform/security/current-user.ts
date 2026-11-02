@@ -9,7 +9,7 @@ export const currentUser = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  roleId: z.uuid(),
+  roleId: z.string(),
   roleName: z.string(),
   permissions: z.array(permissionKeySchema).describe("The permissions of the user's role. Show a screen when it has <SCREEN>.VIEW"),
 })
@@ -28,7 +28,7 @@ export function getCurrentUser(userId: string): Promise<CurrentUser | null> {
       where: { id: userId },
       include: { role: { include: { permissions: grantsSelect } } },
     })
-    if (!user?.isActive) return null
+    if (!user || user.isDeleted) return null
     return {
       id: user.id,
       name: user.name,

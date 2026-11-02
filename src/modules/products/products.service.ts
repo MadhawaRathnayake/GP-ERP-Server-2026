@@ -14,11 +14,11 @@ const STOCK_COLUMNS = {
   onArrival: "stockOnArrival",
 } as const satisfies Record<StockBucket, keyof Product>
 
-export function listProducts({ sku, categoryId, includeInactive, ...page }: ListProductsQuery) {
+export function listProducts({ sku, categoryId, includeDeleted, ...page }: ListProductsQuery) {
   const where: Prisma.ProductWhereInput = {
     ...(sku && { sku: { contains: sku, mode: "insensitive" } }),
     ...(categoryId && { categoryId }),
-    ...(!includeInactive && { isActive: true }),
+    ...(!includeDeleted && { isDeleted: false }),
   }
   return paginate(
     page,
@@ -56,9 +56,9 @@ export async function updateProduct(id: string, data: UpdateProductBody, actor: 
   })
 }
 
-/** Products are never deleted: they're deactivated, so their history stays. `PATCH { isActive: true }` restores one. */
+/** Products are never deleted: they're deactivated, so their history stays. `PATCH { isDeleted: false }` restores one. */
 export async function deleteProduct(id: string, actor: Actor) {
-  await updateProduct(id, { isActive: false }, actor)
+  await updateProduct(id, { isDeleted: true }, actor)
 }
 
 /** Writes a movement for each of price, cost and stock that differs between `before` (null = new product) and `after`. */
@@ -78,6 +78,6 @@ async function recordMovements(tx: Prisma.TransactionClient, before: Product | n
 }
 
 async function assertActiveCategory(id: string) {
-  const category = await db.category.findUnique({ where: { id }, select: { isActive: true } })
-  if (!category?.isActive) throw new BadRequestError(`Category ${id} doesn't exist or is deleted`)
+  const category = await db.category.findUnique({ where: { id }, select: { isDeleted: true } })
+  if (!category || category.isDeleted) throw new BadRequestError(`Category ${id} doesn't exist or is deleted`)
 }

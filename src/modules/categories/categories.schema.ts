@@ -12,13 +12,13 @@ export const category = z.object({
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
   modifiedAt: z.date().nullable(),
-  isActive: z.boolean(),
+  isDeleted: z.boolean(),
 })
 
 export const categoryList = z.array(category)
 
 export const listCategoriesQuery = z.object({
-  includeInactive: z.stringbool().default(false).describe("Include deactivated (deleted) categories"),
+  includeDeleted: z.stringbool().default(false).describe("Include deleted categories"),
 })
 
 const categoryFields = z.object({
@@ -30,7 +30,7 @@ export const createCategoryBody = categoryFields.extend({ description: categoryF
 
 // From the fields without defaults (see the pitfall in AGENTS.md).
 export const updateCategoryBody = categoryFields
-  .extend({ isActive: z.boolean().describe("false = deleted: hidden from lists by default") })
+  .extend({ isDeleted: z.boolean().describe("true = deleted: hidden from lists by default") })
   .partial()
 
 export type ListCategoriesQuery = z.infer<typeof listCategoriesQuery>

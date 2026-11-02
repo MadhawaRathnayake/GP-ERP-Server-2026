@@ -60,7 +60,7 @@ describe("auth", () => {
   it("ends the session when the user is deactivated", async () => {
     const { id, cookie } = await signIn(app, [])
     const changed = waitForChange("User")
-    await db.user.update({ where: { id }, data: { isActive: false } })
+    await db.user.update({ where: { id }, data: { isDeleted: true } })
     await changed
 
     expect((await me(cookie)).statusCode).toBe(401)

@@ -13,7 +13,7 @@ const { SESSION_ID, user } = vi.hoisted(() => ({
     id: "USER00001",
     name: "Test",
     email: "t@test.local",
-    roleId: "00000000-0000-4000-8000-000000000000",
+    roleId: "ROLE0001",
     roleName: "No access",
     permissions: [],
   } as CurrentUser,
@@ -43,6 +43,7 @@ const anId = "00000000-0000-4000-8000-000000000002"
 const aProductId = "PROD000002"
 const aCategoryId = "CAT0002"
 const aUserId = "USER00002"
+const aRoleId = "ROLE0002"
 
 beforeAll(async () => {
   const { buildApp } = await import("#app.js")
@@ -88,9 +89,9 @@ describe("app wiring", () => {
     ["PATCH", `/api/v1/users/${aUserId}`, "ADMIN.MANAGE_USERS"],
     ["DELETE", `/api/v1/users/${aUserId}`, "ADMIN.MANAGE_USERS"],
     ["GET", "/api/v1/roles", "ADMIN.VIEW"],
-    ["GET", `/api/v1/roles/${anId}`, "ADMIN.VIEW"],
+    ["GET", `/api/v1/roles/${aRoleId}`, "ADMIN.VIEW"],
     ["POST", "/api/v1/roles", "ADMIN.MANAGE_ROLES"],
-    ["PATCH", `/api/v1/roles/${anId}`, "ADMIN.MANAGE_ROLES"],
+    ["PATCH", `/api/v1/roles/${aRoleId}`, "ADMIN.MANAGE_ROLES"],
     ["GET", "/api/v1/permissions", "ADMIN.VIEW"],
     ["PATCH", "/api/v1/settings", "ADMIN.EDIT_SETTINGS"],
   ] as const)("%s %s requires %s", async (method, url, permission) => {
@@ -139,7 +140,7 @@ describe("app wiring", () => {
     expect(createUser.description).toContain("`ADMIN.MANAGE_USERS`")
 
     const userSchema = createUser.responses["201"].content["application/json"].schema
-    expect(Object.keys(userSchema.properties)).toEqual(expect.arrayContaining(["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isActive"]))
+    expect(Object.keys(userSchema.properties)).toEqual(expect.arrayContaining(["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isDeleted"]))
     expect(Object.keys(userSchema.properties)).not.toContain("passwordHash")
 
     const creditLimit = spec.paths["/api/v1/customers/{id}"].get.responses["200"].content["application/json"].schema.properties.creditLimit

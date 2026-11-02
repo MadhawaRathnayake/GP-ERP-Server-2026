@@ -99,10 +99,10 @@ Report each item as done or not done. A feature isn't finished until all of them
   Prisma checksums them. Mark hand-written SQL with `-- hand-written:`. Timestamps are `@db.Timestamptz(3)`; money is
   `Decimal @db.Decimal(14, 2)` with `money` from `#http/fields.js`.
 - **Every table ends with the audit columns, in this order:** `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`,
-  `isActive`. The only exception is `Session`. Copy them from an existing model (e.g. `Product`): `createdBy`/`modifiedBy`
+  `isDeleted`. The only exceptions are `Session` and `RolePermission`. Copy them from an existing model (e.g. `Product`): `createdBy`/`modifiedBy`
   link to `User` and are set from the actor (NULL = written by the system); `modifiedAt` is NULL until the first change
-  (no `updatedAt`); `isActive = false` is a soft delete. `test/schema.test.ts` fails if a table breaks this.
-- **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isActive = false`). The audit columns
+  (no `updatedAt`); `isDeleted = true` is a soft delete. `test/schema.test.ts` fails if a table breaks this.
+- **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isDeleted = true`). The audit columns
   `createdBy/createdAt/modifiedBy/modifiedAt` are set from the actor and never accepted from clients.
 
 ## Known pitfalls

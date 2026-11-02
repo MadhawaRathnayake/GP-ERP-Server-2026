@@ -32,6 +32,7 @@ describe("roles", () => {
     const created = await post({ name, description: "Front desk", permissions: ["DASHBOARD.VIEW"] })
     expect(created.statusCode).toBe(201)
     const { id } = created.json()
+    expect(id).toMatch(/^ROLE\d{4,}$/)
 
     const list = await app.inject({ url: "/api/v1/roles", headers: { cookie: admin.cookie } })
     expect(list.json().some((r: { id: string }) => r.id === id)).toBe(true)

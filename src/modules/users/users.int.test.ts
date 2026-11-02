@@ -44,7 +44,7 @@ describe("users", () => {
       name: "Jane Doe",
       roleId,
       roleName: expect.stringMatching(new RegExp(`^${TEST_PREFIX}`)),
-      isActive: true,
+      isDeleted: false,
       createdBy: admin.id,
       modifiedBy: null,
       modifiedAt: null,
@@ -84,7 +84,7 @@ describe("users", () => {
   })
 
   it("rejects an unknown role", async () => {
-    const res = await create({ name: "X", email: email("norole"), password: "password1", roleId: "00000000-0000-4000-8000-000000000000" })
+    const res = await create({ name: "X", email: email("norole"), password: "password1", roleId: "ROLE999999" })
     expect(res.statusCode).toBe(400)
     expect(res.json().error.message).toBe("The selected role does not exist")
   })
@@ -125,30 +125,30 @@ describe("users", () => {
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: self.cookie } })).statusCode).toBe(200)
   })
 
-  it("deletes softly: the row stays with isActive false, the user is signed out and hidden from the list", async () => {
+  it("deletes softly: the row stays with isDeleted true, the user is signed out and hidden from the list", async () => {
     const user = await signIn(app, ["DASHBOARD.VIEW"])
     expect((await remove(user.id)).statusCode).toBe(204)
 
-    expect((await get(user.id)).json()).toMatchObject({ id: user.id, isActive: false, modifiedBy: admin.id })
+    expect((await get(user.id)).json()).toMatchObject({ id: user.id, isDeleted: true, modifiedBy: admin.id })
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: user.cookie } })).statusCode).toBe(401)
     expect((await app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email: user.email, password: TEST_PASSWORD } })).statusCode).toBe(401)
 
     const ids = (cookie: string, query = "") =>
       app.inject({ url: `/api/v1/users${query}`, headers: { cookie } }).then((r) => r.json().map((u: { id: string }) => u.id))
     expect(await ids(admin.cookie)).not.toContain(user.id)
-    expect(await ids(admin.cookie, "?includeInactive=true")).toContain(user.id)
+    expect(await ids(admin.cookie, "?includeDeleted=true")).toContain(user.id)
   })
 
   it("restores a deleted user", async () => {
     const user = await signIn(app, [])
     await remove(user.id)
-    expect((await update(user.id, { isActive: true })).json().isActive).toBe(true)
+    expect((await update(user.id, { isDeleted: false })).json().isDeleted).toBe(false)
     await expect(login(app, user.email, TEST_PASSWORD)).resolves.toBeTruthy()
   })
 
   it("stops an admin from locking themselves out", async () => {
     const self = await signIn(app, [...ADMIN])
-    for (const change of [{ isActive: false }, { roleId }]) {
+    for (const change of [{ isDeleted: true }, { roleId }]) {
       const res = await update(self.id, change, self.cookie)
       expect(res.statusCode).toBe(409)
       expect(res.json().error.code).toBe("SELF_LOCKOUT")

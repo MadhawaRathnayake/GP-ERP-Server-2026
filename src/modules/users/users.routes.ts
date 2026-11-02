@@ -40,7 +40,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     (req) => updateUser(req.params.id, req.body, actorOf(req)),
   )
 
-  // Soft delete: sets isActive = false and signs the user out everywhere.
+  // Soft delete: sets isDeleted = true and signs the user out everywhere.
   app.delete(
     "/:id",
     {

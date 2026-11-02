@@ -73,7 +73,8 @@ Add the model in its section (e.g. under a new `// ─── Purchasing ──�
 - The model name is the table name. Don't use `@@map`.
 - Timestamps are `@db.Timestamptz(3)`. Money is `Decimal @db.Decimal(14, 2)`.
 - **The audit columns go last, in this exact order:** `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`,
-  `isActive`. `test/schema.test.ts` fails otherwise. Copy them, with their relations, from an existing model.
+  `isDeleted`. `test/schema.test.ts` fails otherwise. Copy them, with their relations, from an existing model. Only
+  `Session` and `RolePermission` go without them.
 
 ```prisma
 // ─── Purchasing ──────────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ model Supplier {
   modifier         User?     @relation("SupplierModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy       String?
   modifiedAt       DateTime? @db.Timestamptz(3)
-  isActive         Boolean   @default(true)
+  isDeleted         Boolean   @default(false)
 }
 ```
 
@@ -154,7 +155,7 @@ and regenerates the client.
 - **Never edit a migration that has already been applied.** Prisma checksums them. Write a new one.
 - Mark any SQL you write by hand with `-- hand-written:`.
 - Never use `prisma db push`, and never reset or drop the shared `ERP-DB`.
-- **Adding columns to an existing table:** Postgres appends new columns after `isActive`, which breaks the
+- **Adding columns to an existing table:** Postgres appends new columns after `isDeleted`, which breaks the
   "audit columns last" rule. On an empty table, drop and recreate it in the migration (see
   `20261029104829_catalogue`). On a table with data, ask first.
 
@@ -222,14 +223,14 @@ export const supplier = z.object({
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
   modifiedAt: z.date().nullable(),
-  isActive: z.boolean(),
+  isDeleted: z.boolean(),
 })
 
 export const supplierPage = pageResult(supplier) // { data: Supplier[], total }
 
 export const listSuppliersQuery = pageQuery.extend({
   q: z.string().trim().min(1).optional().describe("Case-insensitive partial match on name, contact or email"),
-  includeInactive: z.stringbool().default(false).describe("Include deactivated (deleted) suppliers"),
+  includeDeleted: z.stringbool().default(false).describe("Include deleted suppliers"),
 })
 
 // Fields a client may send. Never the id or the audit columns: those are set by the server.
@@ -254,7 +255,7 @@ export const createSupplierBody = supplierFields.extend({
 // Built from the fields WITHOUT defaults. `createSupplierBody.partial()` would keep the defaults, so a PATCH that only
 // renames a supplier would reset its payment terms.
 export const updateSupplierBody = supplierFields
-  .extend({ isActive: z.boolean().describe("false = deleted: hidden from lists by default") })
+  .extend({ isDeleted: z.boolean().describe("true = deleted: hidden from lists by default") })
   .partial()
 
 export type ListSuppliersQuery = z.infer<typeof listSuppliersQuery>
@@ -290,7 +291,7 @@ import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { CreateSupplierBody, ListSuppliersQuery, UpdateSupplierBody } from "./suppliers.schema.js"
 
-export function listSuppliers({ q, includeInactive, ...page }: ListSuppliersQuery) {
+export function listSuppliers({ q, includeDeleted, ...page }: ListSuppliersQuery) {
   const where: Prisma.SupplierWhereInput = {
     ...(q && {
       OR: [
@@ -299,7 +300,7 @@ export function listSuppliers({ q, includeInactive, ...page }: ListSuppliersQuer
         { email: { contains: q, mode: "insensitive" } },
       ],
     }),
-    ...(!includeInactive && { isActive: true }),
+    ...(!includeDeleted && { isDeleted: false }),
   }
   return paginate(
     page,
@@ -323,16 +324,16 @@ export function updateSupplier(id: string, data: UpdateSupplierBody, actor: Acto
   return db.supplier.update({ where: { id }, data: { ...data, modifiedBy: actor.id, modifiedAt: new Date() } })
 }
 
-/** Suppliers are never deleted: they're deactivated, so their history stays. `PATCH { isActive: true }` restores one. */
+/** Suppliers are never deleted: they're deactivated, so their history stays. `PATCH { isDeleted: false }` restores one. */
 export async function deleteSupplier(id: string, actor: Actor) {
-  await updateSupplier(id, { isActive: false }, actor)
+  await updateSupplier(id, { isDeleted: true }, actor)
 }
 ```
 
 Rules:
 - **Audit columns:** set `createdBy: actor.id` on create, and `modifiedBy: actor.id, modifiedAt: new Date()` on every
   update. Never take them from the request body.
-- **Delete is soft:** `isActive = false`. Lists hide inactive rows unless `includeInactive=true`.
+- **Delete is soft:** `isDeleted = true`. Lists hide deleted rows unless `includeDeleted=true`.
 - **Business rules belong here**, e.g. "can't delete a category that active products use" (see
   `categories.service.ts`).
 - **Don't import another module.** A service may query any table through `db`, but `modules/a` never imports
@@ -410,7 +411,7 @@ The resulting API:
 
 | Method | Path | Body / query | Permission | Success |
 |---|---|---|---|---|
-| GET | `/api/v1/suppliers` | `?page&limit&q&includeInactive` | `SUPPLIERS.VIEW` | 200 `{ data, total }` |
+| GET | `/api/v1/suppliers` | `?page&limit&q&includeDeleted` | `SUPPLIERS.VIEW` | 200 `{ data, total }` |
 | GET | `/api/v1/suppliers/:id` | | `SUPPLIERS.VIEW` | 200 supplier |
 | POST | `/api/v1/suppliers` | `createSupplierBody` | `SUPPLIERS.CREATE` | 201 supplier |
 | PATCH | `/api/v1/suppliers/:id` | `updateSupplierBody` | `SUPPLIERS.EDIT` | 200 supplier |
@@ -584,12 +585,12 @@ export interface Supplier {
   createdAt: string
   modifiedBy: string | null
   modifiedAt: string | null
-  isActive: boolean
+  isDeleted: boolean
 }
 
-export type NewSupplier = Omit<Supplier, "id" | "createdBy" | "createdAt" | "modifiedBy" | "modifiedAt" | "isActive">
+export type NewSupplier = Omit<Supplier, "id" | "createdBy" | "createdAt" | "modifiedBy" | "modifiedAt" | "isDeleted">
 
-export type SupplierUpdate = Partial<NewSupplier & { isActive: boolean }> & { id: string }
+export type SupplierUpdate = Partial<NewSupplier & { isDeleted: boolean }> & { id: string }
 ```
 
 ### 11.3 API calls and hooks: `src/pages/Suppliers/api.ts`
@@ -625,7 +626,7 @@ export function useCreateSupplier() {
 }
 
 // useUpdateSupplier → http.patch(`/suppliers/${id}`, changes)
-// useDeleteSupplier → http.delete(`/suppliers/${id}`)   (soft delete; restore = PATCH { isActive: true })
+// useDeleteSupplier → http.delete(`/suppliers/${id}`)   (soft delete; restore = PATCH { isDeleted: false })
 ```
 
 ### 11.4 Pages: `src/pages/Suppliers/`

@@ -16,9 +16,9 @@ type UserRow = Omit<Prisma.UserGetPayload<{ include: typeof withRole }>, "passwo
 
 const toUser = ({ role, ...user }: UserRow) => ({ ...user, roleName: role.name })
 
-export async function listUsers({ includeInactive }: ListUsersQuery) {
+export async function listUsers({ includeDeleted }: ListUsersQuery) {
   const users = await db.user.findMany({
-    where: includeInactive ? {} : { isActive: true },
+    where: includeDeleted ? {} : { isDeleted: false },
     include: withRole,
     orderBy: { createdAt: "desc" },
   })
@@ -55,7 +55,7 @@ export async function updateUser(id: string, { password, ...changes }: UpdateUse
     })
     .catch(toUserWriteError)
 
-  if (changes.isActive === false) {
+  if (changes.isDeleted === true) {
     await sessions.destroyAllForUser(id)
   } else if (password !== undefined) {
     // A replaced password ends the user's other sessions; an admin changing their own keeps the current one.
@@ -66,7 +66,7 @@ export async function updateUser(id: string, { password, ...changes }: UpdateUse
 
 /** Users are never deleted: they're deactivated, keeping their history and the createdBy/modifiedBy references. */
 export async function deactivateUser(id: string, actor: Actor): Promise<void> {
-  await updateUser(id, { isActive: false }, actor)
+  await updateUser(id, { isDeleted: true }, actor)
 }
 
 /** Reserves the next USER00001-style id. Only needed for the very first user, who is their own creator (seed, tests). */
@@ -83,7 +83,7 @@ async function findUser(id: string): Promise<UserRow> {
 
 /** Rejects a change that would deactivate the actor or move them to a role that can't manage users. */
 async function assertKeepsUserAdmin(changes: Omit<UpdateUserBody, "password">) {
-  if (changes.isActive === false) throw new SelfLockoutError()
+  if (changes.isDeleted === true) throw new SelfLockoutError()
   if (changes.roleId === undefined) return
 
   const role = await db.role.findUnique({ where: { id: changes.roleId }, select: { permissions: grantsSelect } })

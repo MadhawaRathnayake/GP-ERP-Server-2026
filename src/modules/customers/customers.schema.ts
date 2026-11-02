@@ -14,7 +14,7 @@ export const customer = z.object({
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
   modifiedAt: z.date().nullable(),
-  isActive: z.boolean(),
+  isDeleted: z.boolean(),
 })
 
 export const customerPage = pageResult(customer)

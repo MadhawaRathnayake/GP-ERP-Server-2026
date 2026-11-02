@@ -35,7 +35,7 @@ export const product = z.object({
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
   modifiedAt: z.date().nullable(),
-  isActive: z.boolean(),
+  isDeleted: z.boolean(),
 })
 
 export const productPage = pageResult(product)
@@ -43,7 +43,7 @@ export const productPage = pageResult(product)
 export const listProductsQuery = pageQuery.extend({
   sku: z.string().trim().min(1).optional().describe("Case-insensitive partial match on SKU"),
   categoryId: categoryId.optional(),
-  includeInactive: z.stringbool().default(false).describe("Include deactivated (deleted) products"),
+  includeDeleted: z.stringbool().default(false).describe("Include deleted products"),
 })
 
 const amount = money.refine((value) => value.gte(0), "Must be 0 or more")
@@ -92,7 +92,7 @@ export const createProductBody = productFields.extend({
 // From the fields without defaults: `createProductBody.partial()` would keep them, so a PATCH that only renames a
 // product would reset its description, price and stock.
 export const updateProductBody = productFields
-  .extend({ isActive: z.boolean().describe("false = deleted: hidden from lists by default") })
+  .extend({ isDeleted: z.boolean().describe("true = deleted: hidden from lists by default") })
   .partial()
 
 export const imageUploadBody = z.object({

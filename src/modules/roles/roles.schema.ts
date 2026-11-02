@@ -1,8 +1,12 @@
 import { z } from "zod"
 import { permissionKeySchema, permissionKeysInput } from "#security/permissions.js"
 
+const roleId = z.string().regex(/^ROLE\d{4,}$/, "Must be a role id like ROLE0001")
+
+export const roleIdParams = z.object({ id: roleId })
+
 export const role = z.object({
-  id: z.uuid(),
+  id: z.string(),
   name: z.string(),
   description: z.string(),
   permissions: z.array(permissionKeySchema),
@@ -10,7 +14,7 @@ export const role = z.object({
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
   modifiedAt: z.date().nullable(),
-  isActive: z.boolean(),
+  isDeleted: z.boolean(),
 })
 
 export const roleList = z.array(role)

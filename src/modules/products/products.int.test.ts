@@ -136,7 +136,7 @@ describe("products", () => {
     expect((await app.inject({ method: "DELETE", url: `/api/v1/products/${id}`, headers: { cookie: user.cookie } })).statusCode).toBe(204)
     await changed
     const res = await app.inject({ url: `/api/v1/products/${id}`, headers: { cookie: user.cookie } })
-    expect(res.json()).toMatchObject({ isActive: false, modifiedBy: user.id })
+    expect(res.json()).toMatchObject({ isDeleted: true, modifiedBy: user.id })
     const list = await app.inject({ url: `/api/v1/products?sku=${sku}`, headers: { cookie: user.cookie } })
     expect(list.json().total).toBe(0)
   })

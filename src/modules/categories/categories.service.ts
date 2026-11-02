@@ -3,8 +3,8 @@ import { ConflictError, NotFoundError } from "#http/errors.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { CreateCategoryBody, ListCategoriesQuery, UpdateCategoryBody } from "./categories.schema.js"
 
-export function listCategories({ includeInactive }: ListCategoriesQuery) {
-  return db.category.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: { name: "asc" } })
+export function listCategories({ includeDeleted }: ListCategoriesQuery) {
+  return db.category.findMany({ where: includeDeleted ? {} : { isDeleted: false }, orderBy: { name: "asc" } })
 }
 
 export async function getCategory(id: string) {
@@ -19,14 +19,14 @@ export function createCategory(data: CreateCategoryBody, actor: Actor) {
 
 // Unknown id → Prisma P2025 → 404, duplicate name → P2002 → 409 (platform/http/error-handler.plugin.ts).
 export async function updateCategory(id: string, data: UpdateCategoryBody, actor: Actor) {
-  if (data.isActive === false) {
-    const inUse = await db.product.count({ where: { categoryId: id, isActive: true } })
+  if (data.isDeleted === true) {
+    const inUse = await db.product.count({ where: { categoryId: id, isDeleted: false } })
     if (inUse > 0) throw new ConflictError(`Category ${id} is used by ${inUse} active product(s); move or delete them first`)
   }
   return db.category.update({ where: { id }, data: { ...data, modifiedBy: actor.id, modifiedAt: new Date() } })
 }
 
-/** Categories are never deleted: they're deactivated, so products keep their history. `PATCH { isActive: true }` restores one. */
+/** Categories are never deleted: they're deactivated, so products keep their history. `PATCH { isDeleted: false }` restores one. */
 export async function deleteCategory(id: string, actor: Actor) {
-  await updateCategory(id, { isActive: false }, actor)
+  await updateCategory(id, { isDeleted: true }, actor)
 }

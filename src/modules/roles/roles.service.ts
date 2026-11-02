@@ -28,7 +28,7 @@ export async function getRole(id: string) {
 export async function createRole({ permissions, ...data }: CreateRoleBody, actor: Actor) {
   const role = await db.role
     .create({
-      data: { ...data, createdBy: actor.id, permissions: { create: await toGrantRows(permissions, actor.id) } },
+      data: { ...data, createdBy: actor.id, permissions: { create: await toGrantRows(permissions) } },
       include: withGrants,
     })
     .catch(toRoleWriteError)
@@ -47,7 +47,7 @@ export async function updateRole(id: string, { permissions, ...changes }: Update
         ...changes,
         modifiedBy: actor.id,
         modifiedAt: new Date(),
-        permissions: permissions === undefined ? undefined : { deleteMany: {}, create: await toGrantRows(permissions, actor.id) },
+        permissions: permissions === undefined ? undefined : { deleteMany: {}, create: await toGrantRows(permissions) },
       },
       include: withGrants,
     })

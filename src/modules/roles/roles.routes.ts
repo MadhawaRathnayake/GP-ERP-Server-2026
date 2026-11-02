@@ -1,7 +1,6 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
-import { idParams } from "#http/fields.js"
 import { actorOf } from "#security/auth.plugin.js"
-import { createRoleBody, role, roleList, updateRoleBody } from "./roles.schema.js"
+import { createRoleBody, role, roleIdParams, roleList, updateRoleBody } from "./roles.schema.js"
 import { createRole, getRole, listRoles, updateRole } from "./roles.service.js"
 
 const routes: FastifyPluginAsyncZod = async (app) => {
@@ -17,7 +16,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     "/:id",
     {
-      schema: { params: idParams, response: { 200: role } },
+      schema: { params: roleIdParams, response: { 200: role } },
       config: { permission: "ADMIN.VIEW" },
     },
     (req) => getRole(req.params.id),
@@ -35,7 +34,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.patch(
     "/:id",
     {
-      schema: { params: idParams, body: updateRoleBody, response: { 200: role } },
+      schema: { params: roleIdParams, body: updateRoleBody, response: { 200: role } },
       config: { permission: "ADMIN.MANAGE_ROLES" },
     },
     (req) => updateRole(req.params.id, req.body, req.user),

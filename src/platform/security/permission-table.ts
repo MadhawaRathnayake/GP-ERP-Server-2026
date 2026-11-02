@@ -11,8 +11,8 @@ type Grants = { permission: { screenCode: string; permissionCode: string } }[]
 /** Grants → permission keys. Rows for permissions no longer defined in code are ignored. */
 export const grantKeys = (grants: Grants): PermissionKey[] => grants.map((g) => toPermissionKey(g.permission)).filter(isPermissionKey)
 
-/** Permission keys → rows to create in RolePermission. `createdBy` null = the system (seed). */
-export async function toGrantRows(keys: PermissionKey[], createdBy: string | null = null): Promise<{ permissionId: number; createdBy: string | null }[]> {
+/** Permission keys → rows to create in RolePermission. */
+export async function toGrantRows(keys: PermissionKey[]): Promise<{ permissionId: string }[]> {
   if (keys.length === 0) return []
   const rows = await db.permission.findMany({
     where: { OR: keys.map((key) => toScreenAndCode(key)) },
@@ -20,7 +20,7 @@ export async function toGrantRows(keys: PermissionKey[], createdBy: string | nul
   })
   // syncPermissions() runs at boot, so a missing row is a bug, not bad input.
   if (rows.length !== keys.length) throw new Error(`Permission rows missing for some of: ${keys.join(", ")}`)
-  return rows.map(({ id }) => ({ permissionId: id, createdBy }))
+  return rows.map(({ id }) => ({ permissionId: id }))
 }
 
 /** Creates rows for permissions added in code and refreshes changed descriptions. Runs at boot. */

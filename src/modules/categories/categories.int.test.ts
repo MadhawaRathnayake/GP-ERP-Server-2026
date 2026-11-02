@@ -27,7 +27,7 @@ describe("categories", () => {
   it("creates a category with a CAT id", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/categories", headers: { cookie: user.cookie }, payload: { name } })
     expect(res.statusCode).toBe(201)
-    expect(res.json()).toMatchObject({ name, description: "", createdBy: user.id, isActive: true })
+    expect(res.json()).toMatchObject({ name, description: "", createdBy: user.id, isDeleted: false })
     expect(res.json().id).toMatch(/^CAT\d{4,}$/)
     id = res.json().id
   })
@@ -52,7 +52,7 @@ describe("categories", () => {
     await db.product.create({ data: { sku: `TEST-${Date.now()}`, title: "In use", categoryId: id, warrantyMonths: 0, trackingType: "quantity" } })
     const res = await app.inject({ method: "DELETE", url: `/api/v1/categories/${id}`, headers: { cookie: user.cookie } })
     expect(res.statusCode).toBe(409)
-    await db.product.updateMany({ where: { categoryId: id }, data: { isActive: false } })
+    await db.product.updateMany({ where: { categoryId: id }, data: { isDeleted: true } })
   })
 
   it("deletes softly: deactivated and hidden from the list", async () => {
@@ -61,8 +61,8 @@ describe("categories", () => {
     await changed
     const list = await app.inject({ url: "/api/v1/categories", headers: { cookie: viewer.cookie } })
     expect(list.json().map((c: { id: string }) => c.id)).not.toContain(id)
-    const all = await app.inject({ url: "/api/v1/categories?includeInactive=true", headers: { cookie: viewer.cookie } })
-    expect(all.json()).toContainEqual(expect.objectContaining({ id, isActive: false }))
+    const all = await app.inject({ url: "/api/v1/categories?includeDeleted=true", headers: { cookie: viewer.cookie } })
+    expect(all.json()).toContainEqual(expect.objectContaining({ id, isDeleted: true }))
   })
 
   it("404s for an unknown id", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createRoleBody, updateRoleBody } from "./roles.schema.js"
+import { createRoleBody, roleIdParams, updateRoleBody } from "./roles.schema.js"
 
 describe("role bodies", () => {
   it("fills defaults on create", () => {
@@ -8,5 +8,15 @@ describe("role bodies", () => {
 
   it("leaves fields that a PATCH doesn't send untouched", () => {
     expect(updateRoleBody.parse({ description: "Front desk" })).toEqual({ description: "Front desk" })
+  })
+})
+
+describe("role id", () => {
+  it.each(["ROLE0001", "ROLE12345"])("accepts %s", (id) => {
+    expect(roleIdParams.safeParse({ id }).success).toBe(true)
+  })
+
+  it.each(["ROLE001", "role0001", "00000000-0000-4000-8000-000000000000"])("rejects %s", (id) => {
+    expect(roleIdParams.safeParse({ id }).success).toBe(false)
   })
 })

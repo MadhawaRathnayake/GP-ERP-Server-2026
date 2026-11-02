@@ -106,14 +106,14 @@ model Customer {
   modifier    User?     @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy  String?
   modifiedAt  DateTime? @db.Timestamptz(3)
-  isActive    Boolean   @default(true)
+  isDeleted    Boolean   @default(false)
 }
 ```
 Then run `npm run db:migrate -- --name add_customers`. This creates the table and its cache trigger.
 
 **2. Schema**: `customers.schema.ts`
 ```ts
-export const customer = z.object({ id: z.uuid(), code: z.string(), name: z.string(), creditLimit: money, createdBy: z.string().nullable(), createdAt: z.date(), modifiedBy: z.string().nullable(), modifiedAt: z.date().nullable(), isActive: z.boolean() })
+export const customer = z.object({ id: z.uuid(), code: z.string(), name: z.string(), creditLimit: money, createdBy: z.string().nullable(), createdAt: z.date(), modifiedBy: z.string().nullable(), modifiedAt: z.date().nullable(), isDeleted: z.boolean() })
 export const customerPage = pageResult(customer)
 export const listCustomersQuery = pageQuery.extend({ q: z.string().trim().min(1).optional() })
 ```
@@ -152,8 +152,9 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 
 | Table | Holds |
 | --- | --- |
-| `Permission` | one row per screen code + permission code |
-| `RolePermission` | what a role grants |
+| `Role` | one row per role; ids are `ROLE0001…` from `next_role_id()` |
+| `Permission` | one row per screen code + permission code; ids are `PMSN0001…` from `next_permission_id()` |
+| `RolePermission` | what a role grants: `roleId` + `permissionId` only, so removing a grant removes the row |
 
 **Where a user's permissions come from:** every user has exactly one role (`User.roleId` is required), and the role's permissions are the user's permissions. To change what one user can do, move them to another role. A role that still has users can't be deleted.
 
@@ -183,12 +184,12 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - `modifiedBy` + `modifiedAt` are set on every change and stay null until the first one.
   - Both hold the acting user's id and are never accepted from the client.
   - The first user, created by the seed, is their own creator.
-- **Delete is soft.** `DELETE /api/v1/users/:id` sets `isActive = false` and ends all of the user's sessions. The row and its history stay.
-  Products and categories work the same way: `DELETE /api/v1/products/:id` (or `/categories/:id`) sets `isActive = false`, lists hide them unless `?includeInactive=true`, and `PATCH { isActive: true }` restores one. A category that active products still use can't be deleted (409).
+- **Delete is soft.** `DELETE /api/v1/users/:id` sets `isDeleted = true` and ends all of the user's sessions. The row and its history stay.
+  Products and categories work the same way: `DELETE /api/v1/products/:id` (or `/categories/:id`) sets `isDeleted = true`, lists hide them unless `?includeDeleted=true`, and `PATCH { isDeleted: false }` restores one. A category that active products still use can't be deleted (409).
   Product ids are `PROD000001…` and category ids `CAT0001…` (`next_product_id()` / `next_category_id()`). A product holds its current `price`, `cost` and four stock columns; creating it, or changing any of them, also records a `PriceMovement` / `CostMovement` (previous → new) or `StockMovement` (signed quantity + balance after) in the same transaction.
   Product images go straight from the browser to Cloudflare R2: `POST /api/v1/products/image-upload-url { contentType }` returns a 5-minute signed `uploadUrl` (PUT the file there with the same `Content-Type`) and the `publicUrl` to save as `imageUrl`. The bucket needs a CORS rule allowing `PUT` from the frontend origin (`R2_*` in `.env.example`).
-  - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeInactive=true`.
-  - `PATCH { isActive: true }` restores a user.
+  - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeDeleted=true`.
+  - `PATCH { isDeleted: false }` restores a user.
   - A deleted user's email stays taken.
 - **Passwords:** `PATCH /api/v1/users/:id` with `password` replaces it and signs the user out everywhere else. An admin changing their own password stays signed in.
 - **No self-lockout:** admins can't deactivate themselves, move themselves to a role without `ADMIN.MANAGE_USERS`, or remove it from their own role (`409 SELF_LOCKOUT`).
