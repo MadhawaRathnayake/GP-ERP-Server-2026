@@ -278,20 +278,45 @@ model StockMovement {
 
 // ─── Sales ───────────────────────────────────────────────────────────────────
 
+enum CustomerType {
+  B2B
+  B2C
+}
+
 // PLACEHOLDER: customer fields are a minimal guess. Replace with the real customer data model
 // (addresses, tax id, payment terms, price list, sales rep, ...), then update modules/customers/customers.schema.ts.
 model Customer {
-  id          String    @id @default(uuid()) @db.Uuid
-  code        String    @unique // PLACEHOLDER: customer number format (e.g. CUS-00001)?
-  name        String
-  email       String?
-  phone       String?
-  creditLimit Decimal   @default(0) @db.Decimal(14, 2)
-  creator     User?     @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy   String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  modifier    User?     @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy  String?
-  modifiedAt  DateTime? @db.Timestamptz(3)
-  isDeleted   Boolean   @default(false)
+  id             String       @id @default(dbgenerated("next_customer_id()"))
+  code           String
+  type           CustomerType
+  title          String?
+  name           String
+  email          String?
+  phones         String[]     @default([])
+  houseNumber    String?
+  street         String?
+  city           String
+  district       String
+  province       String
+  country        String
+  vatNumber      String?
+  tinNumber      String?
+  pvNumber       String?
+  isCommissioned Boolean      @default(false)
+  creator        User?        @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy      String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  modifier       User?        @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy     String?
+  modifiedAt     DateTime?    @db.Timestamptz(3)
+  isDeleted      Boolean      @default(false)
+
+  @@index([name])
+  @@index([city])
+  @@index([district])
+  @@index([phones], type: Gin)
+  @@index([vatNumber])
+  @@index([tinNumber])
+  @@index([pvNumber])
 }
+

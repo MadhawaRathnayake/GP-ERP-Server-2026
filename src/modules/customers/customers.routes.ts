@@ -1,7 +1,8 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { idParams } from "#http/fields.js"
-import { customer, customerPage, listCustomersQuery } from "./customers.schema.js"
-import { getCustomer, listCustomers } from "./customers.service.js"
+import { createCustomerBody, customer, customerPage, listCustomersQuery } from "./customers.schema.js"
+import { createCustomer, getCustomer, listCustomers } from "./customers.service.js"
+import { actorOf } from "#security/auth.plugin.js"
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -20,6 +21,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "CUSTOMERS.VIEW", cache: ["Customer"] },
     },
     (req) => getCustomer(req.params.id),
+  )
+
+  app.post(
+    "/",
+    {
+      schema: { body: createCustomerBody, response: { 201: customer}},
+      config: { permission: "CATEGORY.CREATE"},
+    },
+    async (req, reply) => reply.status(201).send(await createCustomer(req.body, actorOf(req))),
   )
 }
 
