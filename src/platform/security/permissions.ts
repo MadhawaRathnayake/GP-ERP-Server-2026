@@ -33,6 +33,12 @@ export const PERMISSIONS = {
     EDIT: "Edit customers",
     DELETE: "Delete customers"
   },
+  SUPPLIERS: {
+    VIEW: "View suppliers",
+    CREATE: "Create suppliers",
+    EDIT: "Edit suppliers",
+    DELETE: "Delete suppliers",
+  },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>
 

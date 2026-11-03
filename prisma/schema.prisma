@@ -79,6 +79,8 @@ model User {
   modifiedStockMovements StockMovement[] @relation("StockMovementModifiedBy")
   createdCustomers       Customer[]      @relation("CustomerCreatedBy")
   modifiedCustomers      Customer[]      @relation("CustomerModifiedBy")
+  createSuppliers        Supplier[]      @relation("SupplierCreatedBy")
+  modifiedSupplier       Supplier[]      @relation("SupplierModifiedBy")
 
   @@index([roleId])
 }
@@ -283,8 +285,7 @@ enum CustomerType {
   B2C
 }
 
-// PLACEHOLDER: customer fields are a minimal guess. Replace with the real customer data model
-// (addresses, tax id, payment terms, price list, sales rep, ...), then update modules/customers/customers.schema.ts.
+// Ids are CUS000001, CUS000002, … (next_customer_id(), hand-written SQL like next_user_id()).
 model Customer {
   id             String       @id @default(dbgenerated("next_customer_id()"))
   code           String
@@ -295,9 +296,9 @@ model Customer {
   phones         String[]     @default([])
   houseNumber    String?
   street         String?
-  city           String
-  district       String
-  province       String
+  city           String?
+  district       String?
+  province       String?
   country        String
   vatNumber      String?
   tinNumber      String?
@@ -311,12 +312,45 @@ model Customer {
   modifiedAt     DateTime?    @db.Timestamptz(3)
   isDeleted      Boolean      @default(false)
 
+  @@index([id])
+  @@index([code])
   @@index([name])
   @@index([city])
   @@index([district])
   @@index([phones], type: Gin)
   @@index([vatNumber])
   @@index([tinNumber])
-  @@index([pvNumber])
 }
 
+// ─── Purchases ───────────────────────────────────────────────────────────────────
+
+// Ids are SUP00001, SUP00002, … (next_supplier_id(), hand-written SQL like next_user_id()).
+model Supplier {
+  id            String        @id @default(dbgenerated("next_supplier_id()"))
+  code          String
+  name          String
+  phones        String[]     @default([])
+  email         String?
+  houseNumber   String?
+  street        String?
+  city          String?
+  district      String?
+  province      String?
+  country       String
+  vatNumber     String?
+  tinNumber     String?
+  pvNumber      String?
+  creator       User?        @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy     String?
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  modifier      User?        @relation("SupplierModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy    String?
+  modifiedAt    DateTime?    @db.Timestamptz(3)
+  isDeleted     Boolean      @default(false)
+
+  @@index([id])
+  @@index([name])
+  @@index([code])
+  @@index([phones], type: Gin)
+  @@index([vatNumber])
+}

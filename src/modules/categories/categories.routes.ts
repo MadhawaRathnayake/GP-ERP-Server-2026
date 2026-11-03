@@ -9,7 +9,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: { querystring: listCategoriesQuery, response: { 200: categoryList } },
-      config: { permission: "PRODUCTS.VIEW", cache: ["Category"] },
+      config: { permission: "CATEGORY.VIEW", cache: ["Category"] },
     },
     (req) => listCategories(req.query),
   )
@@ -18,7 +18,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/:id",
     {
       schema: { params: categoryIdParams, response: { 200: category } },
-      config: { permission: "PRODUCTS.VIEW", cache: ["Category"] },
+      config: { permission: "CATEGORY.VIEW", cache: ["Category"] },
     },
     (req) => getCategory(req.params.id),
   )
@@ -27,7 +27,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: { body: createCategoryBody, response: { 201: category } },
-      config: { permission: "PRODUCTS.CREATE" },
+      config: { permission: "CATEGORY.CREATE" },
     },
     async (req, reply) => reply.status(201).send(await createCategory(req.body, actorOf(req))),
   )
@@ -36,7 +36,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/:id",
     {
       schema: { params: categoryIdParams, body: updateCategoryBody, response: { 200: category } },
-      config: { permission: "PRODUCTS.EDIT" },
+      config: { permission: "CATEGORY.EDIT" },
     },
     (req) => updateCategory(req.params.id, req.body, actorOf(req)),
   )
@@ -45,7 +45,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/:id",
     {
       schema: { params: categoryIdParams },
-      config: { permission: "PRODUCTS.DELETE" },
+      config: { permission: "CATEGORY.DELETE" },
     },
     async (req, reply) => {
       await deleteCategory(req.params.id, actorOf(req))

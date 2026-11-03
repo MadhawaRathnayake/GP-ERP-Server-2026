@@ -27,7 +27,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: { body: createCustomerBody, response: { 201: customer}},
-      config: { permission: "CATEGORY.CREATE"},
+      config: { permission: "CUSTOMERS.CREATE"},
     },
     async (req, reply) => reply.status(201).send(await createCustomer(req.body, actorOf(req))),
   )

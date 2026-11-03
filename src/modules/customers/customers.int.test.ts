@@ -7,12 +7,15 @@ let app: App
 let reader: TestUser
 let noAccess: TestUser
 const code = `TEST-${Date.now()}`
+let id: string // the test customer, created in beforeAll
 
 beforeAll(async () => {
   app = await startApp()
   reader = await signIn(app, ["CUSTOMERS.VIEW"])
   noAccess = await signIn(app, ["PRODUCTS.VIEW"])
-  await db.customer.create({ data: { code, name: "Test Customer Ltd", email: "buyer@test.local", creditLimit: 50000 } })
+  ;({ id } = await db.customer.create({
+    data: { code, type: "B2B", name: "Test Customer Ltd", email: "buyer@test.local", country: "Sri Lanka" },
+  }))
 })
 
 afterAll(async () => {
@@ -30,7 +33,7 @@ describe("customers", () => {
   it("lists and searches", async () => {
     const res = await app.inject({ url: `/api/v1/customers?q=${code}`, headers: { cookie: reader.cookie } })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toMatchObject({ total: 1, data: [{ code, name: "Test Customer Ltd", creditLimit: 50000 }] })
+    expect(res.json()).toMatchObject({ total: 1, data: [{ id, code, name: "Test Customer Ltd", type: "B2B" }] })
   })
 
   it("is cached until the Customer table changes", async () => {
@@ -38,7 +41,7 @@ describe("customers", () => {
     expect((await app.inject({ url, headers: { cookie: reader.cookie } })).headers["x-cache"]).toBe("HIT")
 
     const changed = waitForChange("Customer")
-    await db.customer.update({ where: { code }, data: { name: "Renamed Ltd" } })
+    await db.customer.update({ where: { id }, data: { name: "Renamed Ltd" } })
     await changed
 
     const res = await app.inject({ url, headers: { cookie: reader.cookie } })
@@ -47,7 +50,6 @@ describe("customers", () => {
   })
 
   it("gets one by id", async () => {
-    const { id } = await db.customer.findUniqueOrThrow({ where: { code } })
     const res = await app.inject({ url: `/api/v1/customers/${id}`, headers: { cookie: reader.cookie } })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ id, code })

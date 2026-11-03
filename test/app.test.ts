@@ -42,6 +42,7 @@ const signedIn = { cookie: `sid=${SESSION_ID}` }
 const anId = "00000000-0000-4000-8000-000000000002"
 const aProductId = "PROD000002"
 const aCategoryId = "CAT0002"
+const aSupplierId = "SUP00002"
 const aUserId = "USER00002"
 const aRoleId = "ROLE0002"
 
@@ -56,7 +57,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -76,13 +77,18 @@ describe("app wiring", () => {
     ["POST", "/api/v1/products/image-upload-url", "PRODUCTS.EDIT"],
     ["PATCH", `/api/v1/products/${aProductId}`, "PRODUCTS.EDIT"],
     ["DELETE", `/api/v1/products/${aProductId}`, "PRODUCTS.DELETE"],
-    ["GET", "/api/v1/categories", "PRODUCTS.VIEW"],
-    ["GET", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.VIEW"],
-    ["POST", "/api/v1/categories", "PRODUCTS.CREATE"],
-    ["PATCH", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.EDIT"],
-    ["DELETE", `/api/v1/categories/${aCategoryId}`, "PRODUCTS.DELETE"],
+    ["GET", "/api/v1/categories", "CATEGORY.VIEW"],
+    ["GET", `/api/v1/categories/${aCategoryId}`, "CATEGORY.VIEW"],
+    ["POST", "/api/v1/categories", "CATEGORY.CREATE"],
+    ["PATCH", `/api/v1/categories/${aCategoryId}`, "CATEGORY.EDIT"],
+    ["DELETE", `/api/v1/categories/${aCategoryId}`, "CATEGORY.DELETE"],
     ["GET", "/api/v1/customers", "CUSTOMERS.VIEW"],
     ["GET", `/api/v1/customers/${anId}`, "CUSTOMERS.VIEW"],
+    ["GET", "/api/v1/suppliers", "SUPPLIERS.VIEW"],
+    ["GET", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.VIEW"],
+    ["POST", "/api/v1/suppliers", "SUPPLIERS.CREATE"],
+    ["PATCH", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.EDIT"],
+    ["DELETE", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.DELETE"],
     ["GET", "/api/v1/users", "ADMIN.VIEW"],
     ["GET", `/api/v1/users/${aUserId}`, "ADMIN.VIEW"],
     ["POST", "/api/v1/users", "ADMIN.MANAGE_USERS"],
@@ -143,8 +149,8 @@ describe("app wiring", () => {
     expect(Object.keys(userSchema.properties)).toEqual(expect.arrayContaining(["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isDeleted"]))
     expect(Object.keys(userSchema.properties)).not.toContain("passwordHash")
 
-    const creditLimit = spec.paths["/api/v1/customers/{id}"].get.responses["200"].content["application/json"].schema.properties.creditLimit
-    expect(creditLimit.type).toBe("number")
+    const price = spec.paths["/api/v1/products/{id}"].get.responses["200"].content["application/json"].schema.properties.price
+    expect(price.type).toBe("number")
 
     expect(spec.paths["/api/v1/auth/login"].post.security).toBeUndefined()
   })

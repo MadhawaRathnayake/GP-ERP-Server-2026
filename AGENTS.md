@@ -2,6 +2,8 @@
 
 Backend for the GP ERP web app (frontend: sibling folder `../GP-ERP-Client`). Read this file before changing anything. Deeper
 docs: `README.md` (how to add an API, permissions, caching, errors) and `ARCHITECTURE.md` (layers, rules, extending).
+`docs/` holds what's easy to forget: column defaults and ids, migrations, automatic behaviour, logging, known issues,
+and a build plan per screen (`docs/screens/`). Add to it when you set up something that happens on its own.
 Read the relevant section there instead of guessing.
 
 ## Rules for AI agents (mandatory)
