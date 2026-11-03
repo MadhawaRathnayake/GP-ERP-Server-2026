@@ -946,7 +946,7 @@ export function CustomersPage() {
         </Select>
         {can("CUSTOMERS.CREATE") && (
           <Button asChild>
-            <Link to="/customers/new">
+            <Link to="/customers/create">
               <PlusIcon />
               New customer
             </Link>
@@ -1452,12 +1452,12 @@ import { CreateCustomerPage } from "@/pages/Customers/CreateCustomerPage"
 import { EditCustomerPage } from "@/pages/Customers/EditCustomerPage"
 ```
 
-Put `customers/new` **before** `customers/:id`, otherwise "new" is read as an id, and add `customers/:id/edit` after
-it:
+Add `customers/create` and `customers/:id/edit` next to `customers/:id`. React Router prefers the fixed `create` over
+`:id` whatever the order; the create link and the route must use the same word, or `create` is read as an id:
 
 ```tsx
       {
-        path: "customers/new",
+        path: "customers/create",
         element: (
           <RequirePermission permission="CUSTOMERS.CREATE">
             <CreateCustomerPage />
@@ -1513,7 +1513,7 @@ Then, with the migration applied and the server running, in the browser:
 5. Type its city in the search box: it shows.
 6. Edit only the name: everything else stays.
 7. Delete it: it leaves the list. Open its URL again and press Restore.
-8. Sign in as a user with only `CUSTOMERS.VIEW`: no New, Edit or Delete buttons, and `/customers/new` says "no access".
+8. Sign in as a user with only `CUSTOMERS.VIEW`: no New, Edit or Delete buttons, and `/customers/create` says "no access".
 
 ---
 
@@ -1553,7 +1553,7 @@ In this order, so the API never runs against the wrong table:
 - [ ] `src/app/auth.ts`: the three new keys
 - [ ] `src/pages/Customers/types.ts`, `api.ts`
 - [ ] `CustomersPage.tsx`, `CustomerPage.tsx`, `CreateCustomerPage.tsx`, `EditCustomerPage.tsx`
-- [ ] `src/router.tsx`: `customers/new` and `customers/:id/edit`
+- [ ] `src/router.tsx`: `customers/create` and `customers/:id/edit`
 - [ ] `npm run build`, `npm run lint` pass
 
 **Rollout**

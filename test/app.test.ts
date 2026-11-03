@@ -39,9 +39,9 @@ vi.mock("#security/current-user.js", async (importOriginal) => ({
 
 let app: App
 const signedIn = { cookie: `sid=${SESSION_ID}` }
-const anId = "00000000-0000-4000-8000-000000000002"
 const aProductId = "PROD000002"
 const aCategoryId = "CAT0002"
+const aCustomerId = "CUST000002"
 const aSupplierId = "SUP00002"
 const aUserId = "USER00002"
 const aRoleId = "ROLE0002"
@@ -83,7 +83,10 @@ describe("app wiring", () => {
     ["PATCH", `/api/v1/categories/${aCategoryId}`, "CATEGORY.EDIT"],
     ["DELETE", `/api/v1/categories/${aCategoryId}`, "CATEGORY.DELETE"],
     ["GET", "/api/v1/customers", "CUSTOMERS.VIEW"],
-    ["GET", `/api/v1/customers/${anId}`, "CUSTOMERS.VIEW"],
+    ["GET", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.VIEW"],
+    ["POST", "/api/v1/customers", "CUSTOMERS.CREATE"],
+    ["PATCH", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.EDIT"],
+    ["DELETE", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.DELETE"],
     ["GET", "/api/v1/suppliers", "SUPPLIERS.VIEW"],
     ["GET", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.VIEW"],
     ["POST", "/api/v1/suppliers", "SUPPLIERS.CREATE"],

@@ -4,14 +4,6 @@ Problems found in the code but not fixed yet. Delete an entry when it's fixed.
 
 Last checked: 2026-11-03.
 
-## Customers: routes and tests not finished
-
-- `customers.routes.ts`: `GET /:id` uses the uuid `idParams` (rejects `CUST…` ids with 400). No PATCH or DELETE yet.
-- `test/app.test.ts`: the customer detail row still uses a uuid id, and there are no rows for POST, PATCH and DELETE.
-  `customers.int.test.ts` covers only list, cache and get, and its "gets one by id" test fails until `GET /:id` uses
-  `customerIdParams`.
-- Fix: [screens/customers.md](screens/customers.md) sections 6, 7 and 9.
-
 ## Suppliers: small bugs in the module
 
 - `suppliers.routes.ts`: `GET /:id` has no `cache: ["Supplier"]`.

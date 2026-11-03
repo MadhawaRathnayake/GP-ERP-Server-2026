@@ -21,10 +21,17 @@ export const customer = z.object({
   district: z.string().nullable(),
   province: z.string().nullable(),
   country: z.string(),
+  contactPerson: z.string().nullable(),
+  contactPhones: z.array(z.string()),
   vatNumber: z.string().nullable(),
   tinNumber: z.string().nullable(),
   pvNumber: z.string().nullable(),
   isCommissioned: z.boolean(),
+  isActive: z.boolean().describe("Set by the system: last invoice less than 6 months ago"),
+  isDormant: z.boolean().describe("Set by the system: last invoice over 18 months ago"),
+  lastInvoiceDate: z.date().nullable().describe("Set by the system"),
+  totalInvoices: z.number().int().describe("Set by the system"),
+  notes: z.string().nullable(),
   createdBy: z.string().nullable(),
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
@@ -43,6 +50,8 @@ export const listCustomersQuery = pageQuery.extend({
 
 const phone = z.string().trim().regex(/^\+?\d{7,15}$/, "Must be a phone number like +94771234567, with no spaces")
 
+// Fields a client may send. isActive, isDormant, lastInvoiceDate and totalInvoices are set by the system from invoices,
+// so they aren't here: zod drops them from a request.
 const customerFields = z.object({
   code: z.string().trim().min(1).max(64),
   type: customerType,
@@ -56,10 +65,13 @@ const customerFields = z.object({
   district: z.string().trim().min(1).max(100).nullable(),
   province: z.string().trim().min(1).max(100).nullable(),
   country: z.string().trim().min(1).max(100),
+  contactPerson: z.string().trim().min(1).max(200).nullable(),
+  contactPhones: z.array(phone).max(10),
   vatNumber: z.string().trim().regex(/^\d{9}-\d{4}$/, "Must be a VAT number like 109860522-7000").nullable(),
   tinNumber: z.string().trim().regex(/^\d{9}$/, "Must be a TIN number like 109860522").nullable(),
   pvNumber: z.string().trim().regex(/^PV-\d+$/, "Must be a PV number like PV-00300617").nullable(),
   isCommissioned: z.boolean(),
+  notes: z.string().trim().min(1).max(2000).nullable(),
 })
 
 export const createCustomerBody = customerFields.extend({
@@ -71,10 +83,13 @@ export const createCustomerBody = customerFields.extend({
   city: customerFields.shape.city.default(null),
   district: customerFields.shape.district.default(null),
   province: customerFields.shape.province.default(null),
+  contactPerson: customerFields.shape.contactPerson.default(null),
+  contactPhones: customerFields.shape.contactPhones.default([]),
   vatNumber: customerFields.shape.vatNumber.default(null),
   tinNumber: customerFields.shape.tinNumber.default(null),
   pvNumber: customerFields.shape.pvNumber.default(null),
   isCommissioned: customerFields.shape.isCommissioned.default(false),
+  notes: customerFields.shape.notes.default(null),
 })
 
 // From the fields without defaults (see the pitfall in AGENTS.md).
