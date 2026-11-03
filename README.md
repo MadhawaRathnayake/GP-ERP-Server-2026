@@ -8,7 +8,7 @@ Fastify 5 · Prisma 7 · PostgreSQL · Redis · TypeScript (strict) · zod
 npm install
 cp .env.example .env          # set DATABASE_URL, REDIS_URL, SEED_ADMIN_EMAIL/PASSWORD
 npm run db:migrate            # create tables + cache triggers
-npm run db:seed               # Super Admin role (all permissions) + first admin user
+npm run db:seed               # Super Admin (the system role: every permission) + first admin user
 npm run dev                   # http://localhost:3000  ·  docs at /docs
 ```
 
@@ -22,6 +22,7 @@ npm run dev                   # http://localhost:3000  ·  docs at /docs
 | `npm run db:migrate [-- --name x]` | Create + apply a migration from `schema.prisma`, add cache triggers, regenerate client |
 | `npm run db:deploy` | Apply migrations in production (no prompts) |
 | `npm run db:studio` | Browse data |
+| `npm run admin:restore -- <email>` | Recovery: give that user Super Admin and reactivate them (server access only; no API) |
 
 ## Folder map
 
@@ -90,15 +91,16 @@ Every log line for the request carries the same `reqId`, which is also returned 
 
 ## Adding an API (example: customers)
 
-`src/modules/customers/` is the reference. A new feature touches only these places. For the full walkthrough, backend and frontend with code for every file, see [ADDING-A-FEATURE.md](ADDING-A-FEATURE.md).
+`src/modules/customers/` and `src/modules/suppliers/` are the references (paginated list, search, create, edit, soft delete and restore). A new feature touches only these places. For the full walkthrough, backend and frontend with code for every file, see [ADDING-A-FEATURE.md](ADDING-A-FEATURE.md). What the database fills by itself, migrations and other things that are easy to forget: [docs/](docs/README.md).
 
 **1. Model** in `prisma/schema.prisma`. The model name is the table name; don't use `@@map`.
 ```prisma
+// Ids are CUST000001, … (next_customer_id(), hand-written SQL in the migration)
 model Customer {
-  id          String    @id @default(uuid()) @db.Uuid
-  code        String    @unique
+  id          String    @id @default(dbgenerated("next_customer_id()"))
+  code        String
   name        String
-  creditLimit Decimal   @default(0) @db.Decimal(14, 2)
+  // … the other fields; see prisma/schema.prisma
   // Audit columns: last, in this order, on every table (copy them, with the matching relations on User, from Product)
   creator     User?     @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy   String?
@@ -109,19 +111,21 @@ model Customer {
   isDeleted    Boolean   @default(false)
 }
 ```
-Then run `npm run db:migrate -- --name add_customers`. This creates the table and its cache trigger.
+Then create the migration. A prefixed id needs its `next_<table>_id()` function written by hand at the top, and a table changed after it has data needs hand-written SQL: see [ADDING-A-FEATURE.md](ADDING-A-FEATURE.md) 2.2 and [docs/migrations.md](docs/migrations.md). Every table needs its `notify_change` cache trigger.
 
 **2. Schema**: `customers.schema.ts`
 ```ts
-export const customer = z.object({ id: z.uuid(), code: z.string(), name: z.string(), creditLimit: money, createdBy: z.string().nullable(), createdAt: z.date(), modifiedBy: z.string().nullable(), modifiedAt: z.date().nullable(), isDeleted: z.boolean() })
+export const customerIdParams = z.object({ id: z.string().regex(/^CUST\d{6,}$/, "Must be a customer id like CUST000001") })
+export const customer = z.object({ id: z.string(), code: z.string(), name: z.string(), /* … */ createdBy: z.string().nullable(), createdAt: z.date(), modifiedBy: z.string().nullable(), modifiedAt: z.date().nullable(), isDeleted: z.boolean() })
 export const customerPage = pageResult(customer)
-export const listCustomersQuery = pageQuery.extend({ q: z.string().trim().min(1).optional() })
+export const listCustomersQuery = pageQuery.extend({ q: z.string().trim().min(1).optional(), includeDeleted: z.stringbool().default(false) })
+// Request bodies list only what a client may send; zod drops everything else (ids, audit and system-set columns).
 ```
 
 **3. Service**: `customers.service.ts`. Plain functions that return Prisma rows as they are.
 ```ts
-export function listCustomers({ q, ...page }: ListCustomersQuery) {
-  const where = q ? { name: { contains: q, mode: "insensitive" as const } } : {}
+export function listCustomers({ q, includeDeleted, ...page }: ListCustomersQuery) {
+  const where = { ...(q && { name: { contains: q, mode: "insensitive" as const } }), ...(!includeDeleted && { isDeleted: false }) }
   return paginate(page, (args) => db.customer.findMany({ where, ...args }), () => db.customer.count({ where }))
 }
 ```
@@ -134,7 +138,7 @@ app.get("/", {
 }, (req) => listCustomers(req.query))
 ```
 
-**5. Permission**: give the feature its own group in `src/platform/security/permissions.ts`, e.g. `CUSTOMERS: { VIEW: "View customers" }`. Don't reuse another screen's codes, so it can be granted separately. The `Permission` table row is created automatically at the next boot, but no role has it yet, not even Super Admin: grant it in the role editor. Add the route to the access matrix in `test/app.test.ts`.
+**5. Permission**: give the feature its own group in `src/platform/security/permissions.ts`, e.g. `CUSTOMERS: { VIEW: "View customers" }`. Don't reuse another screen's codes, so it can be granted separately. The `Permission` table row is created automatically at the next boot, and Super Admin (the system role) has it at once; grant it to other roles in the role editor. Add the route to the access matrix in `test/app.test.ts`.
 
 The route is now at `/api/v1/customers`. It's in `/docs`, protected, cached, and cleared on every change to the Customer table. You don't edit `app.ts`, the error handler, any cache wiring or any trigger SQL.
 
@@ -157,6 +161,8 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 | `RolePermission` | what a role grants: `roleId` + `permissionId` only, so removing a grant removes the row |
 
 **Where a user's permissions come from:** every user has exactly one role (`User.roleId` is required), and the role's permissions are the user's permissions. To change what one user can do, move them to another role. A role that still has users can't be deleted.
+
+**The system role (Super Admin, `Role.isSystem = true`):** it has every permission, worked out in code by `roleKeys()` in `security/permission-table.ts`, whatever its grant rows say, so it also gets permissions added later. Its name and permissions can't be changed (`409 SYSTEM_ROLE`; the description can), and the last active user with it can't be deleted or moved to another role (`409 LAST_SUPER_ADMIN`). If everyone is locked out anyway, `npm run admin:restore -- <email>` on the server gives that user Super Admin again.
 
 **Keeping the table in sync:** `src/platform/security/permissions.ts` is the source of truth. At boot, `security/permissions-sync.plugin.ts` creates any missing `Permission` rows and refreshes descriptions. Rows for codes that were removed from the file are logged as a warning and grant nothing.
 
@@ -185,7 +191,8 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - Both hold the acting user's id and are never accepted from the client.
   - The first user, created by the seed, is their own creator.
 - **Delete is soft.** `DELETE /api/v1/users/:id` sets `isDeleted = true` and ends all of the user's sessions. The row and its history stay.
-  Products and categories work the same way: `DELETE /api/v1/products/:id` (or `/categories/:id`) sets `isDeleted = true`, lists hide them unless `?includeDeleted=true`, and `PATCH { isDeleted: false }` restores one. A category that active products still use can't be deleted (409).
+  Products, categories, customers and suppliers work the same way: `DELETE /api/v1/<module>/:id` sets `isDeleted = true`, lists hide them unless `?includeDeleted=true`, and `PATCH { isDeleted: false }` restores one. A category that active products still use can't be deleted (409).
+  Customer ids are `CUST000001…` and supplier ids `SUP00001…`. `GET /api/v1/customers` also takes exact `?city=` and `?district=` filters. A customer's `isActive`, `isDormant`, `lastInvoiceDate` and `totalInvoices` are set by the system from invoices: clients can't send them.
   Product ids are `PROD000001…` and category ids `CAT0001…` (`next_product_id()` / `next_category_id()`). A product holds its current `price`, `cost` and four stock columns; creating it, or changing any of them, also records a `PriceMovement` / `CostMovement` (previous → new) or `StockMovement` (signed quantity + balance after) in the same transaction.
   Product images go straight from the browser to Cloudflare R2: `POST /api/v1/products/image-upload-url { contentType }` returns a 5-minute signed `uploadUrl` (PUT the file there with the same `Content-Type`) and the `publicUrl` to save as `imageUrl`. The bucket needs a CORS rule allowing `PUT` from the frontend origin (`R2_*` in `.env.example`).
   - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeDeleted=true`.
@@ -193,8 +200,9 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - A deleted user's email stays taken.
 - **Passwords:** `PATCH /api/v1/users/:id` with `password` replaces it and signs the user out everywhere else. An admin changing their own password stays signed in.
 - **No self-lockout:** admins can't deactivate themselves, move themselves to a role without `ADMIN.MANAGE_USERS`, or remove it from their own role (`409 SELF_LOCKOUT`).
+- **Always a Super Admin:** nobody can deactivate the last active Super Admin user or move them to another role (`409 LAST_SUPER_ADMIN`).
 
-**Roles** (`/api/v1/roles`): viewing needs `ADMIN.VIEW`; changes need `ADMIN.MANAGE_ROLES`.
+**Roles** (`/api/v1/roles`): viewing needs `ADMIN.VIEW`; changes need `ADMIN.MANAGE_ROLES`. Responses include `isSystem`; the system role's name and permissions can't be changed (`409 SYSTEM_ROLE`).
 
 **Secrets:** passwords are hashed with scrypt (`platform/security/password.ts`). `passwordHash` is never loaded unless a query asks for it: `omit` in `platform/core/db.ts`.
 
@@ -218,12 +226,12 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 - If the listener connection drops, it reconnects and clears the whole cache.
 - `CACHE_TTL_SECONDS` caps how long anything is cached.
 
-**Always use `npm run db:migrate`**, never `prisma db push`, so the triggers exist.
+**Never use `prisma db push`**: `npm run db:migrate` adds the triggers, and a hand-written migration that creates or recreates a table must add its trigger itself.
 
 ## Errors
 
 - Throw, don't format: `throw new NotFoundError("Customer", id)`, `ConflictError`, `BadRequestError`, or any `AppError`.
-- Errors specific to one feature go in that feature's folder: `class CreditLimitExceededError extends AppError { ... }` in `customers.errors.ts`.
+- Errors specific to one feature go in that feature's folder, e.g. `SystemRoleError` in `roles/roles.errors.ts` and `SelfLockoutError` in `users/users.errors.ts`.
 - Prisma errors are already mapped: duplicate value P2002 → 409, missing record P2025 → 404, foreign key P2003 → 409.
 - If a handler returns data that doesn't match its response schema, the client gets a 500 and the exact mismatch is in the log.
 

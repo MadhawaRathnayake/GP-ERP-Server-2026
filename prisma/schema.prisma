@@ -99,10 +99,13 @@ model Session {
 }
 
 // Ids are ROLE0001, ROLE0002, … (next_role_id(), hand-written SQL like next_user_id()).
+// isSystem = Super Admin: it has every permission in code (its grant rows are ignored), its name and permissions can't
+// be changed, and at least one active user always keeps it (roles.service.ts, users.service.ts).
 model Role {
   id          String           @id @default(dbgenerated("next_role_id()"))
   name        String           @unique
   description String           @default("")
+  isSystem    Boolean          @default(false)
   permissions RolePermission[]
   users       User[]           @relation("UserRole")
   creator     User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)

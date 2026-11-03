@@ -6,3 +6,10 @@ export class SelfLockoutError extends AppError {
     super(409, "SELF_LOCKOUT", message)
   }
 }
+
+/** The change would leave no active user with the system role (Super Admin), so nobody could manage the app. */
+export class LastSuperAdminError extends AppError {
+  constructor() {
+    super(409, "LAST_SUPER_ADMIN", "At least one active user must keep the Super Admin role")
+  }
+}

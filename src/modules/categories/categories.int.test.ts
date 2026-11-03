@@ -4,14 +4,14 @@ import { db } from "#core/db.js"
 import { cleanupTestUsers, signIn, startApp, waitForChange, type TestUser } from "#test/helpers.js"
 
 let app: App
-let user: TestUser // can view, create, edit and delete the catalogue
-let viewer: TestUser // can only view it
+let user: TestUser // can view, create, edit and delete categories
+let viewer: TestUser // can only view them
 const name = `TEST-CAT-${Date.now()}`
 
 beforeAll(async () => {
   app = await startApp()
-  user = await signIn(app, ["PRODUCTS.VIEW", "PRODUCTS.CREATE", "PRODUCTS.EDIT", "PRODUCTS.DELETE"])
-  viewer = await signIn(app, ["PRODUCTS.VIEW"])
+  user = await signIn(app, ["CATEGORY.VIEW", "CATEGORY.CREATE", "CATEGORY.EDIT", "CATEGORY.DELETE"])
+  viewer = await signIn(app, ["CATEGORY.VIEW"])
 })
 
 afterAll(async () => {
@@ -32,7 +32,7 @@ describe("categories", () => {
     id = res.json().id
   })
 
-  it("needs PRODUCTS.CREATE to create", async () => {
+  it("needs CATEGORY.CREATE to create", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/categories", headers: { cookie: viewer.cookie }, payload: { name: `${name}-2` } })
     expect(res.statusCode).toBe(403)
   })

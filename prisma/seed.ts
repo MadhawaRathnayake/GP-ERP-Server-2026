@@ -25,6 +25,7 @@ const role = await db.role.upsert({
   create: {
     name: SUPER_ADMIN_ROLE,
     description: "Full access to every module and setting.",
+    isSystem: true, // has every permission in code, including ones added later
     permissions: { create: await toGrantRows(PERMISSION_DEFINITIONS.map((p) => p.key)) },
   },
 })

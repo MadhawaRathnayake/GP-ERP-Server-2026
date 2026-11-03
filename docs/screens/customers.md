@@ -1,18 +1,25 @@
 # Customers screen, end to end
 
-This is the complete build plan for the **Customers** screen: the table, the API, the permissions, the tests and the
-pages in the frontend. Every code block below is the full file (or the exact edit) to use. They were checked on
-copies of both repos: the backend passes `npm run typecheck`, `npm run lint`, `npm test` and
-`npm run build` (apart from 5 category checks in `test/app.test.ts` that
-expect `PRODUCTS.*` while the category routes now use `CATEGORY.*`); the frontend passes `npm run build` and `npm run lint`. The integration test hasn't been run (it
-writes to `ERP-DB`).
+The plan for the **Customers** screen: the table, the API, the permissions, the tests and the pages in the frontend.
 
-For the general rules behind each step, see [ADDING-A-FEATURE.md](../../ADDING-A-FEATURE.md). To plan the next screen, copy
-this file and follow [Reusing this plan for the next screen](#reusing-this-plan-for-the-next-screen).
+> **The screen is built (2026-11-03).** The real files are the reference now:
+> `src/modules/customers/` (backend) and `../GP-ERP-Client/src/pages/Customers/` (frontend). The code blocks below are
+> the original plan and differ from what was built:
+> - The model has more fields: `contactPerson`, `contactPhones`, `notes` (users fill them in) and `isActive`,
+>   `isDormant`, `lastInvoiceDate`, `totalInvoices` (set by the system, never sent by clients). Migration
+>   `20261103120000_customer_contacts_and_activity`.
+> - The form follows the Suppliers pages: district and province are text boxes (no district dropdown), phones are one
+>   comma-separated field, and Title shows only for B2C (new customers start as B2B).
+> - There is no `customers.schema.test.ts`; `customers.int.test.ts` covers create, filters, edit, cache, soft
+>   delete, restore and permissions.
+> - The create page is `/customers/create`.
+>
+> Sections 3.2 (indexes), 13 (rollout) and [Reusing this plan for the next screen](#reusing-this-plan-for-the-next-screen)
+> still apply.
 
-- Backend repo: `GP-ERP-Server` (this folder). Frontend repo: `../GP-ERP-Client`.
-- Customers already exist as a read-only placeholder (list and detail). This plan replaces it with the real model and
-  full create, edit, delete and restore.
+For the general rules behind each step, see [ADDING-A-FEATURE.md](../../ADDING-A-FEATURE.md).
+
+- Backend repo: `GP-ERP-Server`. Frontend repo: `../GP-ERP-Client`.
 
 ## Contents
 
@@ -36,20 +43,8 @@ this file and follow [Reusing this plan for the next screen](#reusing-this-plan-
 
 ## 1. Status
 
-As of 2026-11-03:
-
-| Step | File | State |
-|---|---|---|
-| Model | `prisma/schema.prisma` | done |
-| Migration | `prisma/migrations/20261102100000_customer_details/migration.sql` | applied |
-| Migration | `prisma/migrations/20261103090000_customer_optional_address/migration.sql` (address optional) | written and tested, **not applied** |
-| Permissions | `src/platform/security/permissions.ts` | done (`CUSTOMERS.VIEW/CREATE/EDIT/DELETE`) |
-| API schema | `src/modules/customers/customers.schema.ts` | done |
-| Service | `src/modules/customers/customers.service.ts` | to do (has list, get and create; list ignores the new filters) |
-| Routes | `src/modules/customers/customers.routes.ts` | to do (still uses the uuid `idParams`; POST uses the wrong permission) |
-| Tests | `customers.schema.test.ts`, `customers.int.test.ts`, `test/app.test.ts` | to do |
-| Docs | `README.md` | to do |
-| Frontend | `../GP-ERP-Client/src/app/auth.ts`, `src/pages/Customers/*`, `src/router.tsx` | to do |
+As of 2026-11-03: done in both repos, with every migration applied up to `20261103120000_customer_contacts_and_activity`.
+Permissions `CUSTOMERS.VIEW/CREATE/EDIT/DELETE`; Super Admin has them automatically, other roles need them ticked.
 
 ---
 
@@ -161,7 +156,7 @@ adding columns with `ALTER TABLE` would put them after the audit columns. It:
 2. drops and recreates `Customer`, creates `next_customer_id()`, the `CustomerType` enum, the indexes, the foreign
    keys and the `Customer_notify_change` cache trigger.
 
-`prisma/migrations/20261103090000_customer_optional_address/migration.sql` (not applied) makes `city`, `district`
+`prisma/migrations/20261103090000_customer_optional_address/migration.sql` (applied) makes `city`, `district`
 and `province` optional (`DROP NOT NULL` keeps their position) and changes the indexes to match the model.
 
 Both were tested on a throwaway database: the result matches `schema.prisma` exactly (`prisma migrate diff` found no

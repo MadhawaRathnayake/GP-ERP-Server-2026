@@ -79,8 +79,8 @@ test/                        helpers.ts · app.test.ts (wiring + access matrix)
 - **Every new feature (screen or entity) gets its own permission group.** Add `<SCREEN>: { VIEW, CREATE, EDIT, DELETE }`
   to `permissions.ts` (only the actions it has) and use those codes on its routes. Never reuse another screen's codes,
   even for a closely related feature (categories get `CATEGORIES.*`, not `PRODUCTS.*`); otherwise an admin can't grant
-  it separately in the role editor. New codes are granted to nobody, not even Super Admin, until an admin ticks them in
-  the role editor; say so when you report done.
+  it separately in the role editor. New codes reach Super Admin (the system role) at once; every other role gets them only
+  when an admin ticks them in the role editor. Say so when you report done.
 
 ## New feature checklist
 

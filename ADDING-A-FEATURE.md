@@ -226,7 +226,8 @@ What happens then, automatically:
 - At the next server start, `permissions-sync.plugin.ts` creates the `Permission` rows (`screenCode = SUPPLIERS`,
   `permissionCode = VIEW`, …).
 - `GET /api/v1/permissions` returns them, and they appear in the frontend role editor, grouped by screen.
-- **Nobody has them yet**, not even Super Admin. See [step 12](#12-after-deploying-grant-the-permissions).
+- **Only Super Admin has them yet**: the system role always has every permission. Other roles need them ticked. See
+  [step 12](#12-after-deploying-grant-the-permissions).
 
 Editing `permissions.ts` for a feature is a normal part of every feature. It isn't a platform change that needs
 approval.
@@ -771,11 +772,11 @@ Above the `"*"` route. `RequirePermission` shows "no access" to users without it
 ## 12. After deploying: grant the permissions
 
 1. Start the server. It creates the `SUPPLIERS.*` `Permission` rows (logged at boot).
-2. Open **Admin → Roles**, edit **Super Admin** (and any other role that needs it), and tick the SUPPLIERS
-   permissions.
+2. Open **Admin → Roles**, edit each role that needs it, and tick the SUPPLIERS permissions. Super Admin is the
+   system role: it has them already and can't be edited.
 3. Users get them on their next request. There's no need to sign in again.
 
-Until step 2, everyone gets 403 on the new routes, and the sidebar link stays hidden.
+Until step 2, everyone except Super Admin users gets 403 on the new routes, and the sidebar link stays hidden.
 
 ---
 

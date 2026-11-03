@@ -160,6 +160,23 @@ describe("users", () => {
     expect((await remove(other.id, self.cookie)).statusCode).toBe(204)
   })
 
+  it("keeps at least one active user with the system role", async (ctx) => {
+    // The rule counts every system-role user, so it can only be tested where none exist yet (e.g. a fresh database).
+    if ((await db.user.count({ where: { isDeleted: false, role: { isSystem: true } } })) > 0) ctx.skip()
+
+    const system = await db.role.create({ data: { name: `${TEST_PREFIX}system-${Date.now()}`, isSystem: true } })
+    const only = await signIn(app, { roleId: system.id })
+    // Another admin can't remove the last one either way.
+    for (const res of [await remove(only.id), await update(only.id, { roleId })]) {
+      expect(res.statusCode).toBe(409)
+      expect(res.json().error.code).toBe("LAST_SUPER_ADMIN")
+    }
+
+    // With a second one, either can go.
+    await signIn(app, { roleId: system.id })
+    expect((await update(only.id, { roleId })).statusCode).toBe(200)
+  })
+
   it("validates the id format and 404s for an unknown user", async () => {
     expect((await get("42")).statusCode).toBe(400)
     expect((await update("USER99999999", { name: "X" })).statusCode).toBe(404)

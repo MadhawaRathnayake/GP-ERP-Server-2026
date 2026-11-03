@@ -4,15 +4,16 @@ import { ConflictError, NotFoundError } from "#http/errors.js"
 import { USER_ADMIN_PERMISSION } from "#security/permissions.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { CurrentUser } from "#security/current-user.js"
-import { grantKeys, grantsSelect, toGrantRows } from "#security/permission-table.js"
+import { grantsSelect, roleKeys, toGrantRows } from "#security/permission-table.js"
 import { SelfLockoutError } from "#modules/users/users.errors.js"
+import { SystemRoleError } from "./roles.errors.js"
 import type { CreateRoleBody, UpdateRoleBody } from "./roles.schema.js"
 
 const withGrants = { permissions: grantsSelect } satisfies Prisma.RoleInclude
 
 type RoleRow = Prisma.RoleGetPayload<{ include: typeof withGrants }>
 
-const toRole = ({ permissions, ...role }: RoleRow) => ({ ...role, permissions: grantKeys(permissions) })
+const toRole = ({ permissions, ...role }: RoleRow) => ({ ...role, permissions: roleKeys({ isSystem: role.isSystem, permissions }) })
 
 export async function listRoles() {
   const roles = await db.role.findMany({ include: withGrants, orderBy: { name: "asc" } })
@@ -36,6 +37,10 @@ export async function createRole({ permissions, ...data }: CreateRoleBody, actor
 }
 
 export async function updateRole(id: string, { permissions, ...changes }: UpdateRoleBody, actor: Pick<CurrentUser, "id" | "roleId">) {
+  // Only the description of a system role can change. An unknown id falls through to the update's 404.
+  const current = await db.role.findUnique({ where: { id }, select: { isSystem: true } })
+  if (current?.isSystem && (permissions !== undefined || changes.name !== undefined)) throw new SystemRoleError()
+
   if (id === actor.roleId && permissions && !permissions.includes(USER_ADMIN_PERMISSION)) {
     throw new SelfLockoutError("You can't remove the user-management permission from your own role")
   }

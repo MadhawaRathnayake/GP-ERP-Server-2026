@@ -57,6 +57,7 @@
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "admin:restore": "tsx --conditions=development scripts/restore-admin.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

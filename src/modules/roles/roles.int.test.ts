@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { App } from "#app.js"
+import { db } from "#core/db.js"
+import { PERMISSION_DEFINITIONS } from "#security/permissions.js"
 import { TEST_PREFIX, cleanupTestUsers, signIn, startApp, type TestUser } from "#test/helpers.js"
 
 let app: App
@@ -58,5 +60,26 @@ describe("roles", () => {
     const res = await patch(self.roleId, { permissions: ["ADMIN.VIEW", "ADMIN.MANAGE_ROLES"] }, self.cookie)
     expect(res.statusCode).toBe(409)
     expect(res.json().error.code).toBe("SELF_LOCKOUT")
+  })
+
+  it("gives a system role every permission and keeps its name and permissions fixed", async () => {
+    // No grant rows at all: a system role's permissions come from code.
+    const system = await db.role.create({ data: { name: roleName("system"), isSystem: true } })
+    const everything = PERMISSION_DEFINITIONS.map((p) => p.key).sort()
+
+    const got = await app.inject({ url: `/api/v1/roles/${system.id}`, headers: { cookie: admin.cookie } })
+    expect(got.json()).toMatchObject({ isSystem: true })
+    expect(got.json().permissions.sort()).toEqual(everything)
+
+    for (const change of [{ permissions: ["DASHBOARD.VIEW"] }, { name: roleName("renamed") }]) {
+      const res = await patch(system.id, change)
+      expect(res.statusCode).toBe(409)
+      expect(res.json().error.code).toBe("SYSTEM_ROLE")
+    }
+    expect((await patch(system.id, { description: "Everything" })).json().description).toBe("Everything")
+
+    const member = await signIn(app, { roleId: system.id })
+    const me = await app.inject({ url: "/api/v1/auth/me", headers: { cookie: member.cookie } })
+    expect(me.json().permissions.sort()).toEqual(everything)
   })
 })

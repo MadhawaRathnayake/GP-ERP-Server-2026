@@ -5,8 +5,8 @@ import { hashPassword } from "#security/password.js"
 import { USER_ADMIN_PERMISSION } from "#security/permissions.js"
 import { sessions } from "#security/sessions.js"
 import type { Actor } from "#security/auth.plugin.js"
-import { grantKeys, grantsSelect } from "#security/permission-table.js"
-import { SelfLockoutError } from "./users.errors.js"
+import { grantsSelect, roleKeys } from "#security/permission-table.js"
+import { LastSuperAdminError, SelfLockoutError } from "./users.errors.js"
 import type { CreateUserBody, ListUsersQuery, UpdateUserBody } from "./users.schema.js"
 
 const withRole = { role: { select: { name: true } } } satisfies Prisma.UserInclude
@@ -41,6 +41,7 @@ export async function createUser({ password, ...data }: CreateUserBody, actor: A
 
 export async function updateUser(id: string, { password, ...changes }: UpdateUserBody, actor: Actor) {
   if (id === actor.id) await assertKeepsUserAdmin(changes)
+  await assertKeepsASuperAdmin(id, changes)
 
   const user = await db.user
     .update({
@@ -86,9 +87,25 @@ async function assertKeepsUserAdmin(changes: Omit<UpdateUserBody, "password">) {
   if (changes.isDeleted === true) throw new SelfLockoutError()
   if (changes.roleId === undefined) return
 
-  const role = await db.role.findUnique({ where: { id: changes.roleId }, select: { permissions: grantsSelect } })
+  const role = await db.role.findUnique({ where: { id: changes.roleId }, select: { isSystem: true, permissions: grantsSelect } })
   if (!role) throw new BadRequestError("The selected role does not exist")
-  if (!grantKeys(role.permissions).includes(USER_ADMIN_PERMISSION)) throw new SelfLockoutError()
+  if (!roleKeys(role).includes(USER_ADMIN_PERMISSION)) throw new SelfLockoutError()
+}
+
+/** Rejects deactivating, or moving off the system role, the last active user who has it. Applies to any user, not just the actor. */
+async function assertKeepsASuperAdmin(id: string, { isDeleted, roleId }: Omit<UpdateUserBody, "password">) {
+  const deactivates = isDeleted === true
+  if (!deactivates && roleId === undefined) return
+
+  const user = await db.user.findUnique({ where: { id }, select: { isDeleted: true, role: { select: { isSystem: true } } } })
+  if (!user || user.isDeleted || !user.role.isSystem) return // an unknown id falls through to the update's 404
+  if (!deactivates && roleId !== undefined) {
+    const newRole = await db.role.findUnique({ where: { id: roleId }, select: { isSystem: true } })
+    if (!newRole || newRole.isSystem) return // a missing role is reported by the update
+  }
+
+  const others = await db.user.count({ where: { id: { not: id }, isDeleted: false, role: { isSystem: true } } })
+  if (others === 0) throw new LastSuperAdminError()
 }
 
 function toUserWriteError(err: unknown): never {

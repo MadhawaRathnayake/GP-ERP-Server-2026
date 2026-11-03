@@ -42,6 +42,7 @@
 | `20261102100000_customer_details` | Customer recreated with the real fields and `CUST` ids; refuses to run if Customer has rows |
 | `20261103090000_customer_optional_address` | Customer `city`, `district`, `province` optional; index changes |
 | `20261103090100_add_suppliers` | Supplier table and `SUP` ids |
-| `20261103120000_customer_contacts_and_activity` | Customer recreated with contact person, contact phones, notes and the system-set `isActive`, `isDormant`, `lastInvoiceDate`, `totalInvoices`; refuses to run if Customer has rows (**not applied yet**) |
+| `20261103120000_customer_contacts_and_activity` | Customer recreated with contact person, contact phones, notes and the system-set `isActive`, `isDormant`, `lastInvoiceDate`, `totalInvoices`; refuses to run if Customer has rows |
+| `20261103150000_system_role` | `Role.isSystem`, set on Super Admin. Added, not recreated (Role has data), so it sits after the audit columns in the database |
 
 Add a row for every new migration.

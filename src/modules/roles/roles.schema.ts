@@ -9,6 +9,7 @@ export const role = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string(),
+  isSystem: z.boolean().describe("true = Super Admin: has every permission; its name and permissions can't be changed"),
   permissions: z.array(permissionKeySchema),
   createdBy: z.string().nullable(),
   createdAt: z.date(),

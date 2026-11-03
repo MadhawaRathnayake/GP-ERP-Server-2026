@@ -10,7 +10,7 @@ When a row is created, these columns are filled even though the service doesn't 
 | `createdAt` | the database (`@default(now())` → `DEFAULT CURRENT_TIMESTAMP`) | the time of the insert, stored in UTC |
 | `isDeleted` | the database (`@default(false)`) | `false` |
 | `modifiedAt`, `modifiedBy` | nobody on create | `NULL` until the first update |
-| other `@default(…)` columns | the database | e.g. `Customer.phones` → `[]`, `Product.price` → `0` |
+| other `@default(…)` columns | the database | e.g. `Customer.phones` → `[]`, `Product.price` → `0`, `Role.isSystem` → `false` |
 
 The row Prisma returns from `create` already contains them, so the API response shows the generated id and
 `createdAt`.
@@ -25,10 +25,22 @@ The row Prisma returns from `create` already contains them, so the API response 
 `actor` comes from `actorOf(req)` in the route. `NULL` in `createdBy`/`modifiedBy` means the system wrote the row
 (boot sync, seed). The exception is `User.createdBy`, which is required.
 
+## Columns the system sets later
+
+| Column | Set by | Meaning |
+|---|---|---|
+| `Customer.isActive` | invoices / a schedule (not built yet) | last invoice less than 6 months ago (default `true`) |
+| `Customer.isDormant` | invoices / a schedule (not built yet) | last invoice over 18 months ago (default `false`) |
+| `Customer.lastInvoiceDate` | invoices (not built yet) | `NULL` until the first invoice |
+| `Customer.totalInvoices` | invoices (not built yet) | `0` until the first invoice |
+| `Role.isSystem` | migration `20261103150000_system_role` and the seed | `true` only on Super Admin ([automatic.md](automatic.md#permissions)) |
+
+None of them is in a request schema, so clients can't send them. The app only shows them.
+
 ## Columns clients can never send
 
 zod removes every key a request schema doesn't list. The create and update schemas never list `id`, `createdBy`,
-`createdAt`, `modifiedBy` or `modifiedAt`, so a client sending them has no effect. Update schemas list `isDeleted`, so
+`createdAt`, `modifiedBy`, `modifiedAt` or the system-set columns above, so a client sending them has no effect. Update schemas list `isDeleted`, so
 `PATCH { isDeleted: false }` restores a row.
 
 ## Ids
@@ -66,7 +78,8 @@ zod removes every key a request schema doesn't list. The create and update schem
 ## Other rules
 
 - **Audit columns last**, in this order: `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`, `isDeleted`. Only
-  `Session` and `RolePermission` go without them. `test/schema.test.ts` fails otherwise.
+  `Session` and `RolePermission` go without them. `test/schema.test.ts` fails otherwise. It checks `schema.prisma`, not
+  the database: in the database, `Role.isSystem` sits after them because it was added to a table with data.
 - **Time:** `@db.Timestamptz(3)`, stored in UTC. The frontend shows it in the company timezone (`Setting.timezone`).
 - **Money:** `Decimal @db.Decimal(14, 2)`, sent as a JSON number through `money` from `#http/fields.js`.
 - **`passwordHash` is never loaded** unless a query asks for it (`omit: { passwordHash: false }`), set globally in

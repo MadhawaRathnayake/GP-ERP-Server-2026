@@ -13,7 +13,6 @@ Last checked: 2026-11-03.
 ## Comments that don't match the ids
 
 - `schema.prisma`: the comment above `model Customer` says `CUS000001`; ids are `CUST000001`.
-- `schema.prisma`: the comment above `model Supplier` says `SUP0001`; the migration now makes `SUP00001`.
 
 ## Duplicate indexes
 

@@ -11,6 +11,10 @@ type Grants = { permission: { screenCode: string; permissionCode: string } }[]
 /** Grants → permission keys. Rows for permissions no longer defined in code are ignored. */
 export const grantKeys = (grants: Grants): PermissionKey[] => grants.map((g) => toPermissionKey(g.permission)).filter(isPermissionKey)
 
+/** A role's permissions. A system role (Super Admin) has every permission, including ones added later, whatever its grants say. */
+export const roleKeys = (role: { isSystem: boolean; permissions: Grants }): PermissionKey[] =>
+  role.isSystem ? PERMISSION_DEFINITIONS.map((p) => p.key) : grantKeys(role.permissions)
+
 /** Permission keys → rows to create in RolePermission. */
 export async function toGrantRows(keys: PermissionKey[]): Promise<{ permissionId: string }[]> {
   if (keys.length === 0) return []

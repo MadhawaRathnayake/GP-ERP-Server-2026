@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { cache } from "#cache/cache.js"
 import { db } from "#core/db.js"
-import { grantKeys, grantsSelect } from "./permission-table.js"
+import { grantsSelect, roleKeys } from "./permission-table.js"
 import { permissionKeySchema } from "./permissions.js"
 
 /** The signed-in user, as returned by /api/v1/auth/me and available as `req.user`. */
@@ -35,7 +35,7 @@ export function getCurrentUser(userId: string): Promise<CurrentUser | null> {
       email: user.email,
       roleId: user.roleId,
       roleName: user.role.name,
-      permissions: grantKeys(user.role.permissions),
+      permissions: roleKeys(user.role),
     }
   })
 }

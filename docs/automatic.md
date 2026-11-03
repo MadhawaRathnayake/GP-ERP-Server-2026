@@ -15,7 +15,12 @@ Things that run without anyone calling them. If something "just works", it's pro
 
 ### Permissions
 
-- A new permission is granted to **nobody**, not even Super Admin, until an admin ticks it in Admin → Roles.
+- A new permission reaches **Super Admin** at once: it's the system role (`Role.isSystem`), which has every permission
+  in code, whatever its grant rows say. Every other role gets it only when an admin ticks it in Admin → Roles.
+- The system role can't be renamed or have its permissions changed (409 `SYSTEM_ROLE`), and the last active user with
+  it can't be deleted or moved to another role (409 `LAST_SUPER_ADMIN`).
+- If everyone is locked out anyway, someone with server access runs `npm run admin:restore -- <email>`: it gives that
+  user Super Admin and reactivates them. There's no API for it.
 - A permission removed from `permissions.ts` stays in the table; it grants nothing and is logged as a warning at
   every start.
 - Users get permission changes on their next request; they don't need to sign in again.
