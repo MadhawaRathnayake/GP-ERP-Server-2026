@@ -14,12 +14,20 @@ describe("updateSettingsBody", () => {
     expect(updateSettingsBody.parse({ timezone: "UTC" })).toEqual({ timezone: "UTC" })
   })
 
+  it.each([0, 7.5, 18, 100])("accepts a VAT rate of %d", (vatRate) => {
+    expect(updateSettingsBody.parse({ vatRate })).toEqual({ vatRate })
+  })
+
   it.each([
     [{ currency: "XYZ1" }],
     [{ currency: "ABC" }],
     [{ country: "XX" }],
     [{ country: "LKA" }],
     [{ timezone: "Mars/Olympus" }],
+    [{ vatRate: -1 }],
+    [{ vatRate: 101 }],
+    [{ vatRate: 18.125 }],
+    [{ vatRate: "18" }],
     [{}],
   ])("rejects %j", (body) => {
     expect(updateSettingsBody.safeParse(body).success).toBe(false)

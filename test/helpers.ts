@@ -79,3 +79,15 @@ export function waitForChange(table: string): Promise<void> {
     dbEvents.on("change", onChange)
   })
 }
+
+/**
+ * Remembers a user dropdown's saved row (Admin → Dropdowns) so a test can change it; call the returned function in
+ * afterAll to put it back exactly, or remove it if it wasn't saved before.
+ */
+export async function keepUserDropdown(code: string): Promise<() => Promise<void>> {
+  const saved = await db.userDropdown.findUnique({ where: { id: code } })
+  return async () => {
+    if (saved) await db.userDropdown.update({ where: { id: code }, data: saved })
+    else await db.userDropdown.deleteMany({ where: { id: code } })
+  }
+}

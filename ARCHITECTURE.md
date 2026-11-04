@@ -18,8 +18,8 @@ For how to add an API, permissions, caching and errors, see the [README](README.
  └─────────────────────────────────┬─────────────────────────────────────────┘   └────────┬──────────┘
                                    ▼                                                      ▼
  ┌─ modules/ — business capabilities ────────────────────────────────────────────────────────────────┐
- │  products · categories · customers · suppliers · users · roles · settings · auth · permissions ·   │
- │  health                                                                                            │
+ │  products · categories · customers · suppliers · quotations · users · roles · settings · dropdowns │
+ │  · auth · permissions · health                                                                     │
  │  services hold the business rules and know nothing about HTTP, cookies or who called them          │
  └─────────────────┬──────────────────────────────────────────────────────┬───────────────────────────┘
                    ▼                                                      ▼

@@ -44,5 +44,6 @@
 | `20261103090100_add_suppliers` | Supplier table and `SUP` ids |
 | `20261103120000_customer_contacts_and_activity` | Customer recreated with contact person, contact phones, notes and the system-set `isActive`, `isDormant`, `lastInvoiceDate`, `totalInvoices`; refuses to run if Customer has rows |
 | `20261103150000_system_role` | `Role.isSystem`, set on Super Admin. Added, not recreated (Role has data), so it sits after the audit columns in the database |
+| `20261104074925_sale_quotations` | SaleQuotation, SaleQuotationItem and UserDropdown tables (integer ids for the quotation tables), their enums and cache triggers; `Setting.vatRate` (default 18), added after the audit columns like `Role.isSystem` |
 
 Add a row for every new migration.

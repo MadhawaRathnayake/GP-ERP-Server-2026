@@ -19,8 +19,8 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  const { currency, country, timezone } = original
-  await updateSettings({ currency, country, timezone }, { id: adminUser.id, sessionId: "" })
+  const { currency, country, timezone, vatRate } = original
+  await updateSettings({ currency, country, timezone, vatRate }, { id: adminUser.id, sessionId: "" })
   await cleanupTestUsers()
   await app.close()
 })
@@ -43,6 +43,14 @@ describe("settings", () => {
     expect(patch.json().currency).toBe("USD")
     await changed
     expect((await getSettings()).currency).toBe("USD")
+  })
+
+  it("updates the VAT rate", async () => {
+    const changed = waitForChange("Setting")
+    const patch = await app.inject({ method: "PATCH", url: "/api/v1/settings", headers: { cookie: admin }, payload: { vatRate: 7.5 } })
+    expect(patch.json().vatRate).toBe(7.5)
+    await changed
+    expect((await getSettings()).vatRate).toBe(7.5)
   })
 
   it("picks up changes made outside the app", async () => {

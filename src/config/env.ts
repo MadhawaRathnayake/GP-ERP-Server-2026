@@ -35,6 +35,7 @@ const schema = z.object({
   DEFAULT_CURRENCY: z.string().length(3).toUpperCase().default("LKR"),
   DEFAULT_COUNTRY: z.string().length(2).toUpperCase().default("LK"),
   DEFAULT_TIMEZONE: z.string().default("Asia/Colombo"),
+  DEFAULT_VAT_RATE: z.coerce.number().min(0).max(100).default(18),
 })
 
 const parsed = schema.safeParse(process.env)

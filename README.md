@@ -191,9 +191,10 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - Both hold the acting user's id and are never accepted from the client.
   - The first user, created by the seed, is their own creator.
 - **Delete is soft.** `DELETE /api/v1/users/:id` sets `isDeleted = true` and ends all of the user's sessions. The row and its history stay.
-  Products, categories, customers and suppliers work the same way: `DELETE /api/v1/<module>/:id` sets `isDeleted = true`, lists hide them unless `?includeDeleted=true`, and `PATCH { isDeleted: false }` restores one. A category that active products still use can't be deleted (409).
+  Products, categories, customers, suppliers and quotations work the same way: `DELETE /api/v1/<module>/:id` sets `isDeleted = true`, lists hide them unless `?includeDeleted=true`, and `PATCH { isDeleted: false }` restores one. A category that active products still use can't be deleted (409).
   Customer ids are `CUST000001…` and supplier ids `SUP00001…`. `GET /api/v1/customers` also takes exact `?city=` and `?district=` filters. A customer's `isActive`, `isDormant`, `lastInvoiceDate` and `totalInvoices` are set by the system from invoices: clients can't send them.
   Product ids are `PROD000001…` and category ids `CAT0001…` (`next_product_id()` / `next_category_id()`). A product holds its current `price`, `cost` and four stock columns; creating it, or changing any of them, also records a `PriceMovement` / `CostMovement` (previous → new) or `StockMovement` (signed quantity + balance after) in the same transaction.
+  Quotations (`/api/v1/quotations`) have integer ids and are saved with their lines. The server works out every amount, copies the product's cost and the VAT rate onto each line, and replaces all the lines when `items` is sent (the old lines stay as deleted rows). `unitCost` is only sent to users with `QUOTATIONS.VIEW_COST`. The sales manager must be one of the users the `SALES_MANAGER` dropdown offers (`GET /api/v1/quotations/sales-managers`). Only an `active` quotation can be edited or deleted (`409 QUOTATION_NOT_ACTIVE`); its `status` can be set to `active`, `cancelled`, `creditConfirmed` or `paymentConfirmed` at any time until it's `invoiceCreated`, after which nothing can change (`409 QUOTATION_INVOICED`). Plan and details: [docs/screens/quotations.md](docs/screens/quotations.md).
   Product images go straight from the browser to Cloudflare R2: `POST /api/v1/products/image-upload-url { contentType }` returns a 5-minute signed `uploadUrl` (PUT the file there with the same `Content-Type`) and the `publicUrl` to save as `imageUrl`. The bucket needs a CORS rule allowing `PUT` from the frontend origin (`R2_*` in `.env.example`).
   - Deleted users can't sign in and are hidden from `GET /api/v1/users` unless you pass `?includeDeleted=true`.
   - `PATCH { isDeleted: false }` restores a user.
@@ -237,9 +238,17 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 
 ## Business settings
 
-- A single `Setting` row holds currency, country and timezone, created from `DEFAULT_*` on first use.
-- `GET /api/v1/settings` (any signed-in user) returns the settings plus `serverTime` in UTC. `PATCH /api/v1/settings` needs `ADMIN.EDIT_SETTINGS`, and values are validated: ISO currency, ISO country, IANA timezone.
+- A single `Setting` row holds currency, country, timezone and the VAT rate (`vatRate`, a percent), created from `DEFAULT_*` on first use. The VAT rate is copied onto each quotation line when the line is saved.
+- `GET /api/v1/settings` (any signed-in user) returns the settings plus `serverTime` in UTC. `PATCH /api/v1/settings` needs `ADMIN.EDIT_SETTINGS`, and values are validated: ISO currency, ISO country, IANA timezone, VAT rate 0–100 with at most 2 decimals.
 - In code: `const { currency, timezone } = await getSettings()`.
+
+## User dropdowns
+
+- Some forms pick a user, e.g. a quotation's sales manager. Admins choose who each such dropdown offers (Admin → Dropdowns): either users picked one by one, or every active user with one of the picked roles. Deactivated users never show.
+- The dropdowns are defined in code (`USER_DROPDOWNS` in `src/modules/dropdowns/dropdowns.ts`); a `UserDropdown` row is written the first time one is saved. Until then it offers no one.
+- `GET /api/v1/dropdowns` needs `DROPDOWNS.VIEW`; `PATCH /api/v1/dropdowns/:code { source?, userIds?, roleIds? }` needs `DROPDOWNS.EDIT`.
+- A feature serves its own dropdown under its own permission (`GET /api/v1/quotations/sales-managers` needs `QUOTATIONS.VIEW`), with `dropdownUsers(code)`, and checks a picked user with `isDropdownUser(code, id)`.
+- To add one: a line in `USER_DROPDOWNS`, a route in the feature that returns `dropdownUsers("<CODE>")`, and the check in its service.
 - Store timestamps in UTC. Use `timezone` only for display, reports and business-day boundaries.
 
 ## Debugging

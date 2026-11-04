@@ -14,6 +14,10 @@ export const PERMISSIONS = {
     MANAGE_ROLES: "Create and edit roles",
     EDIT_SETTINGS: "Change company settings (currency, country, timezone)",
   },
+  DROPDOWNS: {
+    VIEW: "See which users each dropdown offers (admin screen)",
+    EDIT: "Choose which users each dropdown offers, e.g. sales managers",
+  },
   DASHBOARD: { VIEW: "Open the dashboard" },
   PRODUCTS: {
     VIEW: "View products",
@@ -38,6 +42,13 @@ export const PERMISSIONS = {
     CREATE: "Create suppliers",
     EDIT: "Edit suppliers",
     DELETE: "Delete suppliers",
+  },
+  QUOTATIONS: {
+    VIEW: "View quotations",
+    VIEW_COST: "See unit cost (and so the margin) on quotation lines",
+    CREATE: "Create quotations",
+    EDIT: "Edit quotations and change their status",
+    DELETE: "Delete quotations",
   },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>

@@ -9,13 +9,15 @@ export interface Settings {
   currency: string
   country: string
   timezone: string
+  vatRate: number // percent; a number, not a Decimal, because the settings are cached as JSON
   modifiedAt: string | null
 }
 
-const toSettings = ({ currency, country, timezone, modifiedAt }: Setting): Settings => ({
+const toSettings = ({ currency, country, timezone, vatRate, modifiedAt }: Setting): Settings => ({
   currency,
   country,
   timezone,
+  vatRate: vatRate.toNumber(),
   modifiedAt: modifiedAt?.toISOString() ?? null,
 })
 
@@ -29,7 +31,13 @@ export function getSettings(): Promise<Settings> {
       await db.setting.upsert({
         where: { id: 1 },
         update: {},
-        create: { id: 1, currency: env.DEFAULT_CURRENCY, country: env.DEFAULT_COUNTRY, timezone: env.DEFAULT_TIMEZONE },
+        create: {
+          id: 1,
+          currency: env.DEFAULT_CURRENCY,
+          country: env.DEFAULT_COUNTRY,
+          timezone: env.DEFAULT_TIMEZONE,
+          vatRate: env.DEFAULT_VAT_RATE,
+        },
       }),
     ),
   )
