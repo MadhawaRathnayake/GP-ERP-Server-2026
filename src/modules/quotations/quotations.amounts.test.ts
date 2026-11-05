@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest"
 import { Prisma } from "#generated/prisma/client.js"
-import { lineAmounts, quotationTotals, type LinePricing } from "./quotations.amounts.js"
+import { lineAmounts, quotationTotals, serviceTotals, type LinePricing } from "./quotations.amounts.js"
+
+describe("serviceTotals", () => {
+  it("charges VAT on the service charge, rounded half-up, with no discount", () => {
+    const totals = serviceTotals(new Prisma.Decimal("1234.57"), new Prisma.Decimal(18))
+    expect(Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, value.toNumber()]))).toEqual({
+      subtotal: 1234.57,
+      discountTotal: 0,
+      taxTotal: 222.22,
+      grandTotal: 1456.79,
+    })
+  })
+})
 
 const d = (n: number) => new Prisma.Decimal(n)
 const asNumbers = (amounts: object) =>

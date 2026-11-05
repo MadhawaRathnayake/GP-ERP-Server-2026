@@ -112,6 +112,8 @@ model User {
   modifiedQuotationItems QuotationItem[] @relation("QuotationItemModifiedBy")
   createdUserDropdowns   UserDropdown[]  @relation("UserDropdownCreatedBy")
   modifiedUserDropdowns  UserDropdown[]  @relation("UserDropdownModifiedBy")
+  createdInvoices        Invoice[]       @relation("InvoiceCreatedBy")
+  modifiedInvoices       Invoice[]       @relation("InvoiceModifiedBy")
 
   @@index([roleId])
 }
@@ -350,6 +352,7 @@ model Customer {
   totalInvoices   Int          @default(0) // set by the system from invoices, like isActive, isDormant and lastInvoiceDate
   notes           String?
   quotations      Quotation[]
+  invoices        Invoice[]
   creator         User?        @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy       String?
   createdAt       DateTime     @default(now()) @db.Timestamptz(3)
@@ -457,6 +460,7 @@ enum QuotationType {
 // module is built, change its column to that table's id type, add the foreign key and check the id in the service.
 model Quotation {
   id                  Int                    @id @default(autoincrement())
+  quotationNumber     String                 @unique @default(dbgenerated("next_quotation_number()")) // GPQ-0000001, next_quotation_number(); never derived from id
   customerId          String
   customer            Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
   salesManagerId      String
@@ -478,6 +482,9 @@ model Quotation {
   productModel        String? // warranty only: typed by the user
   paymentTerms        QuotationPaymentTerms? // any type; null = not set
   deliveryLocation    String? // any type; typed by the user
+  serviceCharge       Decimal?               @db.Decimal(14, 2) // service only: the price, instead of product lines
+  serviceTaxRate      Decimal?               @db.Decimal(5, 2) // service only: VAT percent from the settings when the charge was saved
+  isPreOrdered        Boolean                @default(false) // sales only
   items               QuotationItem[]
   creator             User?                  @relation("QuotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy           String?
@@ -530,4 +537,33 @@ model QuotationItem {
 
   @@index([quotationId, lineNo])
   @@index([productId])
+}
+
+// ─── Invoices ───────────────────────────────────────────────────────────────────
+
+enum InvoicePaymentMethod {
+  cash
+  credit
+  check
+  bankTransfer
+}
+
+model Invoice {
+  id               Int                    @id @default(autoincrement())
+  InvoiceNumber    String
+  type             QuotationType
+  customerId       String
+  customer         Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  paymentmethod    InvoicePaymentMethod
+  paymentTerms     QuotationPaymentTerms?
+  dueDate          DateTime
+  deliveryLocation String?
+
+  creator    User?     @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  modifier   User?     @relation("InvoiceModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy String?
+  modifiedAt DateTime? @db.Timestamptz(3)
+  isDeleted  Boolean   @default(false)
 }

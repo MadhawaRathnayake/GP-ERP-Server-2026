@@ -34,6 +34,15 @@ migration `20261104074925_sale_quotations` is applied.
   `oldSerialNumberId`, `productModel` (text the user types). Changing the type is an edit (`EDIT`, active only) and
   must send null for the fields the new type can't have. **The referenced modules aren't built yet** (see AGENTS.md →
   "Modules not built yet"): the ids are unchecked text with no foreign key. `GET /?type=` filters by type.
+- **How each type is priced** (`quotations.types.ts` `contentProblems`, + `.test.ts`): sales and warranty quotations have
+  at least one product line and no `serviceCharge`; a service quotation has **no lines**, only a `serviceCharge` (required),
+  and its totals come from it (`serviceTotals` in `quotations.amounts.ts`: subtotal = charge, VAT at the settings rate,
+  saved in `serviceTaxRate`). They're recalculated with the current VAT rate whenever the type, charge or lines are
+  sent. Changing a sales quotation to service means sending `items: []` and a charge, and back, lines and
+  `serviceCharge: null`. `isPreOrdered` is for sales quotations only. The database checks only what can't break existing
+  rows: no charge or service VAT rate outside service (`Quotation_service_charge_check`), pre-order only on sales
+  (`Quotation_pre_order_check`). In the old system a service quotation copied the repair note's received items into its
+  lines at price 0; here it has none, and the PDF will read them from the repair note once the Repairs module exists.
 - **Payment and delivery** (every type, optional): `paymentTerms` (`cashOnDelivery` | `advancePayment` | null) and
   `deliveryLocation` (text the user types).
 - **Permissions per action.** `PATCH` checks each change in the service, so a role can be allowed to confirm but not to
@@ -92,15 +101,24 @@ All under `/api/v1/quotations`. Money is a JSON number; dates (`quotationDate`, 
 - `../GP-ERP-Client/src/pages/Quotations/QuotationDocument.tsx` draws it with `@react-pdf/renderer`, ported point for
   point from the old system's `GP-System-Client/src/components/pdfGenerator.js` (document `quotation`): same A4 layout,
   styles, company details, terms and bank accounts (hard-coded, typos included). The detail page shows it and offers
-  the download (`GPQ-<id> <customer name>.pdf`); cancelled quotations have none, as before.
-- The number is `GPQ-<id>`, the old format. New ids start at 1, so they repeat old numbers unless the `Quotation`
-  id sequence is moved past the last old `GPQ-` number before go-live.
+  the download (`<quotationNumber> <customer name>.pdf`); cancelled quotations have none, as before.
+- The number is `Quotation.quotationNumber`, `GPQ-` + at least 7 digits (`GPQ-0000001`), set by the database from
+  `next_quotation_number()` and its own sequence `quotation_number_seq` (migration `20261105160000_quotation_number`),
+  not from the id. Quotations from before it got the number of their id. Clients show `quotationNumber`, never the id.
+  Before go-live, move the sequence past the old system's last `GPQ-` number:
+  `SELECT setval('quotation_number_seq', <last old number>);`
 - Checked against the old library (v1.6.17, rendered under Node 16) with the same data: every text item at the same
   position, font and size (0.000 mm), on one-page and three-page quotations. Two known differences: the old library
   ignored `fontWeight`, so neither PDF has bold text; and where the totals start a new page, the old one drew an empty
   bordered strip at the foot of the previous page and started the next 0.7 mm lower.
-- Left out on purpose: the Payment Terms row (no such field), inverter "Warranty Period" lines and the Suntree cable
-  warranty line (no warranty text on products yet).
+- Service and warranty (2026-11-05), checked the same way by rendering the old `pdfGenerator.js` itself: sales, warranty
+  and service quotations identical (0.000 mm, same fonts and sizes, logo in the same place). Like the old one, every
+  quotation prints a Payment Terms row (new quotations default to Cash on Delivery) and non-sales ones an "Invoice Type"
+  row. A service quotation prints the old received-items table (# / SKU / Model / Category / Serial Number) and a
+  Service Charge / VAT / Total summary instead of the product table; until the Repairs module exists only the table's
+  header prints.
+- Left out on purpose: inverter "Warranty Period" lines (no warranty text on products yet) and the Suntree cable
+  warranty line, which the old code hard-coded to one category name (no hard-coded conditions in the new system).
 - The detail response (`GET /quotations/:id`) carries what the document needs: the customer's address, phones, email,
   contact person and VAT number, and each product's description and image URL. Product images must be PNG or JPEG
   (WebP shows "N/A") and the R2 bucket must allow `GET` from the frontend origin (CORS), or they show as blank.

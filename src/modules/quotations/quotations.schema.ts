@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { money } from "#http/fields.js"
 import { pageQuery, pageResult } from "#http/pagination.js"
-import { fieldsNotAllowed, FIELDS_OF_TYPE } from "./quotations.types.js"
+import { contentProblems, fieldsNotAllowed, FIELDS_OF_TYPE } from "./quotations.types.js"
 
 const customerId = z.string().regex(/^CUST\d{6,}$/, "Must be a customer id like CUST000001")
 const productId = z.string().regex(/^PROD\d{6,}$/, "Must be a product id like PROD000001")
@@ -79,6 +79,7 @@ export const quotationItem = z.object({
 // A list row: the quotation without its lines.
 export const quotationSummary = z.object({
   id: z.number().int(),
+  quotationNumber: z.string().describe("GPQ-0000001: set by the database, shown wherever the quotation is named"),
   customerId: z.string(),
   customer: party.extend({ code: z.string() }),
   salesManagerId: z.string(),
@@ -93,6 +94,9 @@ export const quotationSummary = z.object({
   productModel: z.string().nullable(),
   paymentTerms: paymentTerms.nullable(),
   deliveryLocation: z.string().nullable(),
+  serviceCharge: money.nullable().describe("Service quotations only: the price, instead of product lines"),
+  serviceTaxRate: money.nullable().describe("Service quotations only: VAT percent from the settings when the charge was saved"),
+  isPreOrdered: z.boolean(),
   status: quotationStatus,
   subtotal: money,
   discountTotal: money,
@@ -176,7 +180,12 @@ const quotationFields = z.object({
   productModel: z.string().trim().min(1).max(200).nullable().describe("Product model, typed by the user; warranty only"),
   paymentTerms: paymentTerms.nullable(),
   deliveryLocation: z.string().trim().min(1).max(500).nullable().describe("Where to deliver, typed by the user; any type"),
-  items: z.array(quotationItemInput).min(1).max(200).describe("In display order. On update, replaces every line"),
+  serviceCharge: amount.nullable().describe("Required on a service quotation, null on the others"),
+  isPreOrdered: z.boolean().describe("Sales quotations only"),
+  items: z
+    .array(quotationItemInput)
+    .max(200)
+    .describe("In display order; at least one on sales and warranty, none on service. On update, replaces every line"),
 })
 
 export const createQuotationBody = quotationFields
@@ -193,11 +202,18 @@ export const createQuotationBody = quotationFields
     productModel: quotationFields.shape.productModel.default(null),
     paymentTerms: quotationFields.shape.paymentTerms.default(null),
     deliveryLocation: quotationFields.shape.deliveryLocation.default(null),
+    serviceCharge: quotationFields.shape.serviceCharge.default(null),
+    isPreOrdered: quotationFields.shape.isPreOrdered.default(false),
+    items: quotationFields.shape.items.default([]),
   })
   // An update is checked in the service, against the saved quotation.
   .superRefine((body, ctx) => {
     for (const field of fieldsNotAllowed(body.type, body)) {
       ctx.addIssue({ code: "custom", path: [field], message: `Must be null for a ${body.type} quotation` })
+    }
+    const content = { lineCount: body.items.length, hasServiceCharge: body.serviceCharge !== null, isPreOrdered: body.isPreOrdered }
+    for (const [field, message] of Object.entries(contentProblems(body.type, content))) {
+      ctx.addIssue({ code: "custom", path: [field], message })
     }
   })
 

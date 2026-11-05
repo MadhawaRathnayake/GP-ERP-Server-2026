@@ -220,17 +220,38 @@ describe("quotations", () => {
     expect(restored.json()).toMatchObject({ isDeleted: false, items: [expect.objectContaining({ quantity: 2 })] })
   })
 
-  it("saves a service quotation's references and clears them when it becomes a sales quotation", async () => {
+  it("prices a service quotation by its charge, and turns it into a sales quotation with lines", async () => {
     const references = { repairReceiveNoteId: "RRN-1", oldInvoiceId: "INV-1", oldSerialNumberId: "SN-1" }
     const delivery = { paymentTerms: "advancePayment", deliveryLocation: "Colombo warehouse" }
-    const created = await create(user, { customerId, type: "service", ...references, ...delivery, items: [{ productId, quantity: 1 }] })
+    const withLines = await create(user, { customerId, type: "service", serviceCharge: 5000, items: [{ productId, quantity: 1 }] })
+    expect(withLines.statusCode).toBe(400)
+
+    const created = await create(user, { customerId, type: "service", ...references, ...delivery, serviceCharge: 5000 })
     expect(created.statusCode).toBe(201)
     expect(created.json()).toMatchObject({ type: "service", ...references, ...delivery, troubleshootId: null, productModel: null })
+    expect(created.json()).toMatchObject({
+      serviceCharge: 5000,
+      serviceTaxRate: vatRate,
+      subtotal: 5000,
+      discountTotal: 0,
+      taxTotal: round2((5000 * vatRate) / 100),
+      grandTotal: round2(5000 + (5000 * vatRate) / 100),
+      isPreOrdered: false,
+      items: [],
+    })
+    expect(created.json().quotationNumber).toMatch(/^GPQ-\d{7,}$/)
 
     const id = created.json().id
-    expect((await patch(user, id, { type: "sales" })).statusCode).toBe(400)
-    const cleared = await patch(user, id, { type: "sales", repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null })
-    expect(cleared.json()).toMatchObject({ type: "sales", repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null })
+    const nulls = { repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null }
+    expect((await patch(user, id, { type: "sales", ...nulls })).statusCode).toBe(400) // still has a charge, no lines
+    const sales = await patch(user, id, { type: "sales", ...nulls, serviceCharge: null, items: [{ productId, quantity: 1 }] })
+    expect(sales.json()).toMatchObject({ type: "sales", ...nulls, serviceCharge: null, serviceTaxRate: null, subtotal: 1000 })
+  })
+
+  it("only lets a sales quotation be a pre-order", async () => {
+    const items = [{ productId, quantity: 1 }]
+    expect((await create(user, { customerId, isPreOrdered: true, items })).json().isPreOrdered).toBe(true)
+    expect((await create(user, { customerId, type: "warranty", isPreOrdered: true, items })).statusCode).toBe(400)
   })
 
   it("returns 404 for an unknown id", async () => {

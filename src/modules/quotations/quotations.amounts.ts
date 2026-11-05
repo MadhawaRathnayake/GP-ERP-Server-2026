@@ -33,6 +33,12 @@ export function lineAmounts({ quantity, unitPrice, discountType, discountValue, 
   return { subtotal, discountAmount, taxAmount, lineTotal: subtotal.sub(discountAmount).add(taxAmount) }
 }
 
+/** A service quotation's totals: it has no lines, only the service charge, with VAT on it. */
+export function serviceTotals(serviceCharge: Prisma.Decimal, taxRate: Prisma.Decimal) {
+  const taxTotal = roundMoney(serviceCharge.mul(taxRate).div(100))
+  return { subtotal: serviceCharge, discountTotal: ZERO, taxTotal, grandTotal: serviceCharge.add(taxTotal) }
+}
+
 /** The quotation's totals: the sum of its lines' rounded amounts, so they always match the lines shown. */
 export function quotationTotals(lines: LineAmounts[]) {
   const sum = (pick: (line: LineAmounts) => Prisma.Decimal) => lines.reduce((total, line) => total.add(pick(line)), ZERO)

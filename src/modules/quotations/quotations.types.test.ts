@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest"
 import { createQuotationBody } from "./quotations.schema.js"
-import { fieldsNotAllowed } from "./quotations.types.js"
+import { contentProblems, fieldsNotAllowed } from "./quotations.types.js"
+
+describe("contentProblems", () => {
+  const content = { lineCount: 1, hasServiceCharge: false, isPreOrdered: false }
+
+  it("prices sales and warranty quotations by lines, without a service charge", () => {
+    expect(contentProblems("sales", content)).toEqual({})
+    expect(contentProblems("warranty", { ...content, lineCount: 0, hasServiceCharge: true })).toEqual({
+      items: "Add at least one product",
+      serviceCharge: "Only a service quotation has a service charge",
+    })
+  })
+
+  it("prices a service quotation by its charge alone", () => {
+    expect(contentProblems("service", { ...content, lineCount: 0, hasServiceCharge: true })).toEqual({})
+    expect(contentProblems("service", content)).toEqual({
+      items: "A service quotation has no product lines",
+      serviceCharge: "A service quotation needs a service charge",
+    })
+  })
+
+  it("lets only a sales quotation be a pre-order", () => {
+    expect(contentProblems("sales", { ...content, isPreOrdered: true })).toEqual({})
+    expect(contentProblems("warranty", { ...content, isPreOrdered: true })).toEqual({
+      isPreOrdered: "Only a sales quotation can be a pre-order",
+    })
+  })
+})
 
 describe("fieldsNotAllowed", () => {
   it("allows no reference fields on a sales quotation", () => {

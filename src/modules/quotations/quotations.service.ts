@@ -6,10 +6,10 @@ import type { Actor } from "#security/auth.plugin.js"
 import type { PermissionKey } from "#security/permissions.js"
 import { dropdownUsers, isDropdownUser } from "#modules/dropdowns/dropdowns.service.js"
 import { getSettings } from "#modules/settings/settings.service.js"
-import { lineAmounts, quotationTotals, roundMoney } from "./quotations.amounts.js"
+import { lineAmounts, quotationTotals, roundMoney, serviceTotals } from "./quotations.amounts.js"
 import { QuotationInvoicedError, QuotationNotActiveError } from "./quotations.errors.js"
 import { permissionsForChange } from "./quotations.permissions.js"
-import { fieldsNotAllowed } from "./quotations.types.js"
+import { contentProblems, fieldsNotAllowed, type QuotationContent } from "./quotations.types.js"
 import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, UpdateQuotationBody } from "./quotations.schema.js"
 
 // A quotation and its lines are saved together. The server works out every amount from the lines (quotations.amounts.ts)
@@ -87,7 +87,7 @@ export async function createQuotation({ items, ...data }: CreateQuotationBody, a
 
   const { id } = await db.$transaction(async (tx) => {
     const quotation = await tx.quotation.create({
-      data: { ...data, quotationDate, ...quotationTotals(lines), createdBy: actor.id },
+      data: { ...data, quotationDate, ...pricing(data.type, data.serviceCharge, lines, vatRate), createdBy: actor.id },
     })
     await tx.quotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: quotation.id, createdBy: actor.id })) })
     return quotation
@@ -95,7 +95,8 @@ export async function createQuotation({ items, ...data }: CreateQuotationBody, a
   return getQuotation(id)
 }
 
-// Sending `items` replaces every line and recalculates the totals, with the current product cost and VAT rate.
+// Sending `items` replaces every line and recalculates the totals, with the current product cost and VAT rate. A service
+// quotation's totals are recalculated, with the current VAT rate, whenever its type, charge or lines are sent.
 // The customer and sales manager are checked only when they change, so an edit form can send them back unchanged after
 // the customer was deleted or the manager removed from the dropdown.
 // Each change needs its own permission (quotations.permissions.ts), checked against `permissions`, the actor's.
@@ -107,7 +108,8 @@ export async function updateQuotation(
 ) {
   const changesContent =
     items !== undefined || Object.entries(data).some(([key, value]) => value !== undefined && key !== "status" && key !== "isDeleted")
-  const lines = items && (await buildLines(items, (await getSettings()).vatRate))
+  const { vatRate } = await getSettings()
+  const lines = items && (await buildLines(items, vatRate))
 
   await db.$transaction(async (tx) => {
     // Locks the row, so two edits at once can't both replace the lines.
@@ -127,6 +129,8 @@ export async function updateQuotation(
         oldInvoiceId: true,
         oldSerialNumberId: true,
         productModel: true,
+        serviceCharge: true,
+        isPreOrdered: true,
       },
     })
     if (!before) throw new NotFoundError("Quotation", String(id))
@@ -144,13 +148,24 @@ export async function updateQuotation(
     if (data.salesManagerId && data.salesManagerId !== before.salesManagerId) await assertSalesManager(data.salesManagerId)
     // Against the saved values: changing the type means sending null for the fields the new type can't have.
     assertTypeFields(data.type ?? before.type, { ...before, ...data })
+    const type = data.type ?? before.type
+    const serviceCharge = data.serviceCharge === undefined ? before.serviceCharge : data.serviceCharge
+    assertContent(type, {
+      lineCount: lines ? lines.length : await tx.quotationItem.count({ where: { quotationId: id, isDeleted: false } }),
+      hasServiceCharge: serviceCharge !== null,
+      isPreOrdered: data.isPreOrdered ?? before.isPreOrdered,
+    })
+    const repriced = lines !== undefined || data.type !== undefined || data.serviceCharge !== undefined
 
     const modified = { modifiedBy: actor.id, modifiedAt: new Date() }
     if (lines) {
       await tx.quotationItem.updateMany({ where: { quotationId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
       await tx.quotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: id, createdBy: actor.id })) })
     }
-    await tx.quotation.update({ where: { id }, data: { ...data, status, ...(lines && quotationTotals(lines)), ...modified } })
+    await tx.quotation.update({
+      where: { id },
+      data: { ...data, status, ...(repriced && pricing(type, serviceCharge, lines ?? [], vatRate)), ...modified },
+    })
   })
   return getQuotation(id)
 }
@@ -220,6 +235,25 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
 function today(timezone: string) {
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
   return new Date(`${day}T00:00:00.000Z`)
+}
+
+/** The totals, and the service VAT rate: from the service charge on a service quotation, from the lines otherwise. */
+function pricing(
+  type: QuotationType,
+  serviceCharge: Prisma.Decimal | null,
+  lines: Parameters<typeof quotationTotals>[0],
+  vatRate: number,
+) {
+  if (type === "service" && serviceCharge) {
+    const taxRate = new Prisma.Decimal(vatRate)
+    return { ...serviceTotals(serviceCharge, taxRate), serviceTaxRate: taxRate }
+  }
+  return { ...quotationTotals(lines), serviceTaxRate: null }
+}
+
+function assertContent(type: QuotationType, content: QuotationContent) {
+  const problems = contentProblems(type, content)
+  if (Object.keys(problems).length > 0) throw new BadRequestError(Object.values(problems).join(". "), { fields: problems })
 }
 
 function assertTypeFields(type: QuotationType, values: Parameters<typeof fieldsNotAllowed>[1]) {

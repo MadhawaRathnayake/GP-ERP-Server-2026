@@ -52,5 +52,7 @@
 | `20261105130000_remove_quotation_view_cost` | Data only: deletes the `QUOTATIONS.VIEW_COST` permission and its grants (unit cost is now shown to everyone) |
 | `20261105140000_quotation_types` | `SaleQuotation` → `Quotation`, `SaleQuotationItem` → `QuotationItem` (renamed with their sequences, constraints, indexes and cache triggers, so no data moves); enum `QuotationType`; `Quotation.type` (default `sales`) and the nullable `repairReceiveNoteId`, `troubleshootId`, `oldInvoiceId`, `oldSerialNumberId`, `productModel` (after the audit columns, like `Role.isSystem`; no foreign keys: those modules aren't built yet); CHECK `Quotation_type_fields_check` |
 | `20261105150000_quotation_payment_delivery` | enum `QuotationPaymentTerms`; nullable `Quotation.paymentTerms` and `Quotation.deliveryLocation` (after the audit columns, like `Role.isSystem`) |
+| `20261105160000_quotation_number` | `Quotation.quotationNumber` (unique, `GPQ-0000001`) from `next_quotation_number()` and `quotation_number_seq`; existing quotations numbered from their id, the sequence set past the highest |
+| `20261105170000_quotation_service_charge` | `Quotation.serviceCharge`, `serviceTaxRate` (service only) and `isPreOrdered` (sales only, default false), after the audit columns like `Role.isSystem`; CHECKs `Quotation_service_charge_check` and `Quotation_pre_order_check` |
 
 Add a row for every new migration.
