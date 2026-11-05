@@ -5,8 +5,8 @@ import { cleanupTestUsers, keepUserDropdown, signIn, startApp, waitForChange, ty
 import { getSettings } from "#modules/settings/settings.service.js"
 
 let app: App
-let user: TestUser // every quotation permission, cost included
-let seller: TestUser // view, create and edit, but no QUOTATIONS.VIEW_COST
+let user: TestUser // every quotation permission
+let seller: TestUser // view, create and edit, but no status changes
 let noAccess: TestUser
 let customerId: string
 let productId: string
@@ -17,7 +17,18 @@ const title = `Test Product ${stamp}`
 
 beforeAll(async () => {
   app = await startApp()
-  user = await signIn(app, ["QUOTATIONS.VIEW", "QUOTATIONS.VIEW_COST", "QUOTATIONS.CREATE", "QUOTATIONS.EDIT", "QUOTATIONS.DELETE"])
+  user = await signIn(app, [
+    "QUOTATIONS.VIEW",
+    "QUOTATIONS.CREATE",
+    "QUOTATIONS.EDIT",
+    "QUOTATIONS.DELETE",
+    "QUOTATIONS.RESTORE",
+    "QUOTATIONS.CONFIRM_PAYMENT",
+    "QUOTATIONS.CONFIRM_CREDIT",
+    "QUOTATIONS.UNDO_CONFIRMATION",
+    "QUOTATIONS.CANCEL",
+    "QUOTATIONS.REOPEN",
+  ])
   seller = await signIn(app, ["QUOTATIONS.VIEW", "QUOTATIONS.CREATE", "QUOTATIONS.EDIT"])
   noAccess = await signIn(app, ["PRODUCTS.VIEW"])
   // Test rows' names and codes start with TEST-, so afterAll can remove them.
@@ -120,14 +131,6 @@ describe("quotations", () => {
     expect(res.json().items[0]).toMatchObject({ unitPrice: 1000, unitCost: 700, subtotal: 1000 })
   })
 
-  it("hides unit cost from users without QUOTATIONS.VIEW_COST", async () => {
-    const res = await app.inject({ url: `/api/v1/quotations/${id}`, headers: { cookie: seller.cookie } })
-    expect(res.statusCode).toBe(200)
-    expect(res.json().items[0].unitCost).toBeNull()
-    const created = await create(seller, { customerId, items: [{ productId, quantity: 1 }] })
-    expect(created.json().items[0].unitCost).toBeNull()
-  })
-
   it.each([
     ["a discount over the line subtotal", { items: [{ productId, quantity: 1, discountType: "fixed", discountValue: 1001 }] }],
     ["a percentage over 100", { items: [{ productId, quantity: 1, discountType: "percentage", discountValue: 101 }] }],
@@ -150,9 +153,22 @@ describe("quotations", () => {
     expect(await db.saleQuotationItem.count({ where: { quotationId: id, isDeleted: true } })).toBe(1)
   })
 
+  it("needs each status change's own permission, not QUOTATIONS.EDIT", async () => {
+    const res = await patch(seller, id, { status: "paymentConfirmed" })
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toMatchObject({ code: "FORBIDDEN", details: { permission: "QUOTATIONS.CONFIRM_PAYMENT" } })
+  })
+
   it("lets users set the status, but not invoiceCreated", async () => {
     expect((await patch(user, id, { status: "paymentConfirmed" })).json().status).toBe("paymentConfirmed")
     expect((await patch(user, id, { status: "invoiceCreated" })).statusCode).toBe(400)
+  })
+
+  it("remembers the confirmation a cancelled quotation had", async () => {
+    expect((await patch(user, id, { status: "cancelled" })).json().status).toBe("cancelledAfterPayment")
+    expect((await patch(user, id, { status: "cancelled" })).json().status).toBe("cancelledAfterPayment")
+    expect((await patch(user, id, { status: "cancelledAfterCredit" })).statusCode).toBe(400)
+    expect((await patch(user, id, { status: "paymentConfirmed" })).json().status).toBe("paymentConfirmed")
   })
 
   it("accepts the saved sales manager back unchanged after they leave the dropdown", async () => {

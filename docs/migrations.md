@@ -45,6 +45,10 @@
 | `20261103120000_customer_contacts_and_activity` | Customer recreated with contact person, contact phones, notes and the system-set `isActive`, `isDormant`, `lastInvoiceDate`, `totalInvoices`; refuses to run if Customer has rows |
 | `20261103150000_system_role` | `Role.isSystem`, set on Super Admin. Added, not recreated (Role has data), so it sits after the audit columns in the database |
 | `20261104074925_sale_quotations` | SaleQuotation, SaleQuotationItem and UserDropdown tables (integer ids for the quotation tables), their enums and cache triggers; `Setting.vatRate` (default 18), added after the audit columns like `Role.isSystem` |
+| `20261105060935_quotation_cancelled_statuses` | `QuotationStatus` values `cancelledAfterCredit` and `cancelledAfterPayment` |
 | `20261105090000_product_stock_version` | `Product.stockVersion` (bigint, default 0, added after the audit columns like `Role.isSystem`), `stock_version_seq`, and the live-stock triggers `Product_set_stock_version` and `Product_notify_stock_change` ([automatic.md](automatic.md#live-stock)) |
+
+| `20261105120000_quotation_action_permissions` | Data only: the `QUOTATIONS` permissions `RESTORE`, `CONFIRM_PAYMENT`, `CONFIRM_CREDIT`, `UNDO_CONFIRMATION`, `CANCEL`, `REOPEN`, granted to every role that had `QUOTATIONS.EDIT` |
+| `20261105130000_remove_quotation_view_cost` | Data only: deletes the `QUOTATIONS.VIEW_COST` permission and its grants (unit cost is now shown to everyone) |
 
 Add a row for every new migration.

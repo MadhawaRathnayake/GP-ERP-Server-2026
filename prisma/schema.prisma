@@ -404,8 +404,10 @@ model Supplier {
 // ─── Quotations ───────────────────────────────────────────────────────────────────
 
 // In use now: active (every saved quotation) → cancelled | creditConfirmed | paymentConfirmed, set by users;
-// invoiceCreated is set by the invoice feature and locks the quotation. The other values are reserved for later
-// (e.g. an approval step, which goes in its own table). Until invoiceCreated, a quotation can be edited and deleted.
+// cancelling a confirmed quotation stores cancelledAfterCredit | cancelledAfterPayment instead of cancelled, so it
+// still shows how far it got. invoiceCreated is set by the invoice feature and locks the quotation. The other values
+// are reserved for later (e.g. an approval step, which goes in its own table). Until invoiceCreated, a quotation can be
+// edited and deleted.
 enum QuotationStatus {
   draft
   pending
@@ -416,6 +418,8 @@ enum QuotationStatus {
   declined
   expired
   cancelled
+  cancelledAfterCredit // cancelled when it was creditConfirmed
+  cancelledAfterPayment // cancelled when it was paymentConfirmed
   creditConfirmed
   paymentConfirmed
   invoiceCreated // turned into an invoice

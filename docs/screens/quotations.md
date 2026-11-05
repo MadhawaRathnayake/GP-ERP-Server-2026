@@ -8,7 +8,7 @@ migration `20261104074925_sale_quotations` is applied.
 | Area | File |
 |---|---|
 | Tables | `prisma/schema.prisma`: `SaleQuotation`, `SaleQuotationItem`, enums `QuotationStatus`, `DiscountType`; `Setting.vatRate` |
-| Permissions | `src/platform/security/permissions.ts`: `QUOTATIONS.VIEW/VIEW_COST/CREATE/EDIT/DELETE` |
+| Permissions | `src/platform/security/permissions.ts`: `QUOTATIONS.VIEW/CREATE/EDIT/DELETE/RESTORE/CONFIRM_PAYMENT/CONFIRM_CREDIT/UNDO_CONFIRMATION/CANCEL/REOPEN`; which action needs which: `src/modules/quotations/quotations.permissions.ts` (+ `.test.ts`) |
 | Amounts | `src/modules/quotations/quotations.amounts.ts` (+ `.test.ts`) |
 | API | `src/modules/quotations/quotations.schema.ts` · `.service.ts` · `.routes.ts` · `.errors.ts` · `.int.test.ts` |
 | VAT setting | `src/modules/settings/*`, `DEFAULT_VAT_RATE` in `src/config/env.ts` |
@@ -20,11 +20,20 @@ migration `20261104074925_sale_quotations` is applied.
 - **Ids** are integers (`autoincrement()`): quotations are high-volume, unlike the master tables with `CUST…`-style ids.
   They have gaps, so they aren't fit for numbers the law needs without gaps (invoices).
 - **Status.** Every saved quotation is `active`. Users may set `active`, `cancelled`, `creditConfirmed` or
-  `paymentConfirmed` (`PATCH { status }`, needs `QUOTATIONS.EDIT`), in any order. Only an `active` quotation can have
+  `paymentConfirmed` (`PATCH { status }`), in any order, each with its own permission (see **Permissions per action**). Sending `cancelled` for a
+  `creditConfirmed` or `paymentConfirmed` quotation stores `cancelledAfterCredit` or `cancelledAfterPayment`, so the
+  status still shows how far it got (clients can't send those two; `active` reopens any of them). Only an `active` quotation can have
   its details or lines changed, or be deleted (409 `QUOTATION_NOT_ACTIVE`); restoring a deleted one is always allowed.
   `invoiceCreated` is for the invoice feature; from then on nothing can change (409 `QUOTATION_INVOICED`). The other enum values (`draft`,
   `pending`, `approved`, `rejected`, `accepted`, `declined`, `expired`) are reserved: no route sets them. An approval
   step, if added, gets its own table pointing at `SaleQuotation.id`.
+- **Permissions per action.** `PATCH` checks each change in the service, so a role can be allowed to confirm but not to
+  undo, which makes confirming final for it. Details or lines: `EDIT`. Delete: `DELETE`; restore: `RESTORE`.
+  To `paymentConfirmed` / `creditConfirmed`: `CONFIRM_PAYMENT` / `CONFIRM_CREDIT`. Cancel: `CANCEL`. Out of a cancelled
+  status: `REOPEN`. Out of a confirmed status other than by cancelling, including reopening `cancelledAfterCredit` /
+  `cancelledAfterPayment`: `UNDO_CONFIRMATION`. A change can need several (e.g. `paymentConfirmed` → `creditConfirmed`).
+  Missing one: 403 `FORBIDDEN` naming it. Migration `20261105120000_quotation_action_permissions` gave the new keys to every
+  role that had `EDIT`, which used to allow all of these.
 - **Amounts are the server's.** Per line: `subtotal = quantity × unitPrice`, discount from the subtotal (percentage of
   it, or a fixed amount off the whole line), tax on what's left, each rounded half-up to 2 decimals. The quotation's
   totals are the sums of its lines. Clients never send amounts, `unitCost` or `taxRate`.
@@ -33,8 +42,10 @@ migration `20261104074925_sale_quotations` is applied.
   touch saved lines.
 - **Editing lines.** `PATCH { items }` replaces every line: the old ones get `isDeleted = true` and new ones are
   written with the current cost and VAT rate. Every product on the new lines must exist and not be deleted.
-- **Cost is private.** `unitCost` is `null` in responses unless the user has `QUOTATIONS.VIEW_COST`; the detail route is
-  cached per user for that reason.
+- **Cost is shown to everyone** who can view quotations (`unitCost` on each line). `QUOTATIONS.VIEW_COST` used to hide
+  it; migration `20261105130000_remove_quotation_view_cost` removed that permission.
+- **Invoices.** `INVOICES.VIEW` (for the invoice pages to come) and `INVOICES.CREATE` are defined; `CREATE` is for the Create invoice button on a confirmed quotation. There is no
+  invoice API yet; the frontend button calls a placeholder.
 - **Delete is soft** (only the quotation row; its lines stay as they are), and `PATCH { isDeleted: false }` restores it.
 - **Sales manager** is required and must be one of the users the `SALES_MANAGER` dropdown offers (Admin → Dropdowns,
   [README → User dropdowns](../../README.md#user-dropdowns)). It's checked only when it's set or changed, so a quotation
@@ -52,7 +63,7 @@ All under `/api/v1/quotations`. Money is a JSON number; dates (`quotationDate`, 
 | GET | `/sales-managers` | `QUOTATIONS.VIEW` | | `{ id, name }[]`, by name |
 | GET | `/:id` | `QUOTATIONS.VIEW` | | `Quotation` |
 | POST | `/` | `QUOTATIONS.CREATE` | `{ customerId, salesManagerId, quotationDate?, validUntil?, notes?, terms?, items }` | 201 `Quotation` |
-| PATCH | `/:id` | `QUOTATIONS.EDIT` | any of the create fields, `status`, `isDeleted` | `Quotation` |
+| PATCH | `/:id` | `QUOTATIONS.VIEW`, plus each change's own (**Permissions per action**) | any of the create fields, `status`, `isDeleted` | `Quotation` |
 | DELETE | `/:id` | `QUOTATIONS.DELETE` | | 204 |
 
 - `items[]`: `{ productId, quantity (int ≥ 1), unitPrice?, description?, discountType? ("none" | "percentage" |
@@ -60,7 +71,7 @@ All under `/api/v1/quotations`. Money is a JSON number; dates (`quotationDate`, 
 - `QuotationSummary`: `id, customerId, customer { id, code, name }, salesManagerId, salesManager { id, name },
   quotationDate, validUntil, status, subtotal, discountTotal, taxTotal, grandTotal, notes, terms` + audit columns.
 - `Quotation` = `QuotationSummary` + `items[]`: `id, lineNo, productId, product { sku }, description, quantity,
-  unitPrice, unitCost (null without VIEW_COST), discountType, discountValue, taxRate, subtotal, discountAmount,
+  unitPrice, unitCost, discountType, discountValue, taxRate, subtotal, discountAmount,
   taxAmount, lineTotal`.
 - 400s: discount over the line subtotal, percentage over 100, a `discountValue` with `discountType: "none"`,
   `validUntil` before `quotationDate`, an unknown or deleted customer or product, a sales manager the dropdown doesn't

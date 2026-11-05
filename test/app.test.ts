@@ -103,7 +103,7 @@ describe("app wiring", () => {
     ["GET", "/api/v1/quotations/sales-managers", "QUOTATIONS.VIEW"],
     ["GET", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.VIEW"],
     ["POST", "/api/v1/quotations", "QUOTATIONS.CREATE"],
-    ["PATCH", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.EDIT"],
+    ["PATCH", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.VIEW"],
     ["DELETE", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.DELETE"],
     ["GET", "/api/v1/dropdowns", "DROPDOWNS.VIEW"],
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],

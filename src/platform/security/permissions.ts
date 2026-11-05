@@ -45,10 +45,19 @@ export const PERMISSIONS = {
   },
   QUOTATIONS: {
     VIEW: "View quotations",
-    VIEW_COST: "See unit cost (and so the margin) on quotation lines",
     CREATE: "Create quotations",
-    EDIT: "Edit quotations and change their status",
+    EDIT: "Edit the details and lines of active quotations",
     DELETE: "Delete quotations",
+    RESTORE: "Restore deleted quotations",
+    CONFIRM_PAYMENT: "Confirm payment for quotations",
+    CONFIRM_CREDIT: "Confirm credit for quotations",
+    UNDO_CONFIRMATION: "Undo a payment or credit confirmation (also needed to reopen one cancelled after it)",
+    CANCEL: "Cancel quotations",
+    REOPEN: "Reopen cancelled quotations",
+  },
+  INVOICES: {
+    VIEW: "View invoices",
+    CREATE: "Create an invoice from a confirmed quotation",
   },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>

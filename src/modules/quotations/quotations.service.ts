@@ -1,12 +1,14 @@
-import { Prisma } from "#generated/prisma/client.js"
+import { Prisma, type QuotationStatus } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
-import { BadRequestError, NotFoundError } from "#http/errors.js"
+import { BadRequestError, ForbiddenError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
+import type { PermissionKey } from "#security/permissions.js"
 import { dropdownUsers, isDropdownUser } from "#modules/dropdowns/dropdowns.service.js"
 import { getSettings } from "#modules/settings/settings.service.js"
 import { lineAmounts, quotationTotals, roundMoney } from "./quotations.amounts.js"
 import { QuotationInvoicedError, QuotationNotActiveError } from "./quotations.errors.js"
+import { permissionsForChange } from "./quotations.permissions.js"
 import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, UpdateQuotationBody } from "./quotations.schema.js"
 
 // A quotation and its lines are saved together. The server works out every amount from the lines (quotations.amounts.ts)
@@ -73,12 +75,6 @@ export async function getQuotation(id: number): Promise<QuotationDetail> {
 /** The users who can be picked as a quotation's sales manager (Admin → Dropdowns). */
 export const listSalesManagers = () => dropdownUsers("SALES_MANAGER")
 
-/** The quotation as someone without QUOTATIONS.VIEW_COST sees it. */
-export const withoutCost = (quotation: QuotationDetail) => ({
-  ...quotation,
-  items: quotation.items.map((item) => ({ ...item, unitCost: null })),
-})
-
 export async function createQuotation({ items, ...data }: CreateQuotationBody, actor: Actor) {
   const { timezone, vatRate } = await getSettings()
   const quotationDate = data.quotationDate ?? today(timezone)
@@ -100,7 +96,13 @@ export async function createQuotation({ items, ...data }: CreateQuotationBody, a
 // Sending `items` replaces every line and recalculates the totals, with the current product cost and VAT rate.
 // The customer and sales manager are checked only when they change, so an edit form can send them back unchanged after
 // the customer was deleted or the manager removed from the dropdown.
-export async function updateQuotation(id: number, { items, ...data }: UpdateQuotationBody, actor: Actor) {
+// Each change needs its own permission (quotations.permissions.ts), checked against `permissions`, the actor's.
+export async function updateQuotation(
+  id: number,
+  { items, ...data }: UpdateQuotationBody,
+  actor: Actor,
+  permissions: readonly PermissionKey[],
+) {
   const changesContent =
     items !== undefined || Object.entries(data).some(([key, value]) => value !== undefined && key !== "status" && key !== "isDeleted")
   const lines = items && (await buildLines(items, (await getSettings()).vatRate))
@@ -110,10 +112,17 @@ export async function updateQuotation(id: number, { items, ...data }: UpdateQuot
     await tx.$executeRaw`SELECT 1 FROM "SaleQuotation" WHERE id = ${id} FOR UPDATE`
     const before = await tx.saleQuotation.findUnique({
       where: { id },
-      select: { status: true, customerId: true, salesManagerId: true, quotationDate: true, validUntil: true },
+      select: { status: true, isDeleted: true, customerId: true, salesManagerId: true, quotationDate: true, validUntil: true },
     })
     if (!before) throw new NotFoundError("Quotation", String(id))
     if (before.status === "invoiceCreated") throw new QuotationInvoicedError(id)
+
+    const status = data.status === "cancelled" ? cancelledStatus(before.status) : data.status
+    const after = { status: status ?? before.status, isDeleted: data.isDeleted ?? before.isDeleted }
+    const missing = permissionsForChange(before, after, changesContent).find((key) => !permissions.includes(key))
+    if (missing) throw new ForbiddenError(missing)
+
+
     if ((changesContent || data.isDeleted === true) && before.status !== "active") throw new QuotationNotActiveError(id)
     assertValidUntil(data.quotationDate ?? before.quotationDate, data.validUntil === undefined ? before.validUntil : data.validUntil)
     if (data.customerId && data.customerId !== before.customerId) await assertActiveCustomer(data.customerId)
@@ -124,7 +133,7 @@ export async function updateQuotation(id: number, { items, ...data }: UpdateQuot
       await tx.saleQuotationItem.updateMany({ where: { quotationId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
       await tx.saleQuotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: id, createdBy: actor.id })) })
     }
-    await tx.saleQuotation.update({ where: { id }, data: { ...data, ...(lines && quotationTotals(lines)), ...modified } })
+    await tx.saleQuotation.update({ where: { id }, data: { ...data, status, ...(lines && quotationTotals(lines)), ...modified } })
   })
   return getQuotation(id)
 }
@@ -134,7 +143,26 @@ export async function updateQuotation(id: number, { items, ...data }: UpdateQuot
  * `PATCH { isDeleted: false }` restores it as it was.
  */
 export async function deleteQuotation(id: number, actor: Actor) {
-  await updateQuotation(id, { isDeleted: true }, actor)
+  // The DELETE route already required QUOTATIONS.DELETE.
+  await updateQuotation(id, { isDeleted: true }, actor, ["QUOTATIONS.DELETE"])
+}
+
+/**
+ * The status a cancelled quotation gets: it keeps the confirmation it had (cancelledAfterCredit/Payment), so the
+ * client still sees how far it got. Cancelling one that's already cancelled leaves it as it is.
+ */
+function cancelledStatus(current: QuotationStatus): QuotationStatus {
+  switch (current) {
+    case "creditConfirmed":
+      return "cancelledAfterCredit"
+    case "paymentConfirmed":
+      return "cancelledAfterPayment"
+    case "cancelledAfterCredit":
+    case "cancelledAfterPayment":
+      return current
+    default:
+      return "cancelled"
+  }
 }
 
 /** Each line with the product's title, price and cost filled in, the VAT rate, and its amounts. */

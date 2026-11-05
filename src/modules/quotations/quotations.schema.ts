@@ -28,11 +28,16 @@ export const quotationStatus = z
     "declined",
     "expired",
     "cancelled",
+    "cancelledAfterCredit",
+    "cancelledAfterPayment",
     "creditConfirmed",
     "paymentConfirmed",
     "invoiceCreated",
   ])
-  .describe("New quotations are active. invoiceCreated is set by the invoice feature and locks the quotation")
+  .describe(
+    "New quotations are active. Cancelling a credit- or payment-confirmed quotation stores cancelledAfterCredit or " +
+      "cancelledAfterPayment. invoiceCreated is set by the invoice feature and locks the quotation",
+  )
 
 // The statuses a user may set. The rest are set by the system or reserved for later (see schema.prisma).
 const settableStatus = z.enum(["active", "cancelled", "creditConfirmed", "paymentConfirmed"])
@@ -51,7 +56,7 @@ export const quotationItem = z.object({
   description: z.string(),
   quantity: z.number().int(),
   unitPrice: money,
-  unitCost: money.nullable().describe("Product cost when the line was saved; null without QUOTATIONS.VIEW_COST"),
+  unitCost: money.describe("Product cost when the line was saved"),
   discountType,
   discountValue: money,
   taxRate: money.describe("VAT percent from the settings when the line was saved"),

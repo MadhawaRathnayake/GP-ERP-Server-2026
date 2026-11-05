@@ -1,4 +1,3 @@
-import type { FastifyRequest } from "fastify"
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { actorOf } from "#security/auth.plugin.js"
 import { dropdownUserList } from "#modules/dropdowns/dropdowns.schema.js"
@@ -10,13 +9,7 @@ import {
   listQuotations,
   listSalesManagers,
   updateQuotation,
-  withoutCost,
-  type QuotationDetail,
 } from "./quotations.service.js"
-
-// unitCost is only sent to users with QUOTATIONS.VIEW_COST, so the detail route is cached per user.
-const forViewer = (req: FastifyRequest, detail: QuotationDetail) =>
-  req.user.permissions.includes("QUOTATIONS.VIEW_COST") ? detail : withoutCost(detail)
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -44,10 +37,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: quotationIdParams, response: { 200: quotation } },
       config: {
         permission: "QUOTATIONS.VIEW",
-        cache: { tables: ["SaleQuotation", "SaleQuotationItem", "Customer", "User", "Product"], perUser: true },
+        cache: ["SaleQuotation", "SaleQuotationItem", "Customer", "User", "Product"],
       },
     },
-    async (req) => forViewer(req, await getQuotation(req.params.id)),
+    (req) => getQuotation(req.params.id),
   )
 
   app.post(
@@ -56,16 +49,25 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { body: createQuotationBody, response: { 201: quotation } },
       config: { permission: "QUOTATIONS.CREATE" },
     },
-    async (req, reply) => reply.status(201).send(forViewer(req, await createQuotation(req.body, actorOf(req)))),
+    async (req, reply) => reply.status(201).send(await createQuotation(req.body, actorOf(req))),
   )
 
   app.patch(
     "/:id",
     {
-      schema: { params: quotationIdParams, body: updateQuotationBody, response: { 200: quotation } },
-      config: { permission: "QUOTATIONS.EDIT" },
+      schema: {
+        params: quotationIdParams,
+        body: updateQuotationBody,
+        response: { 200: quotation },
+        description:
+          "Each change also needs its own permission: details or lines `QUOTATIONS.EDIT`; status `CONFIRM_PAYMENT`, " +
+          "`CONFIRM_CREDIT`, `CANCEL`, `REOPEN`, `UNDO_CONFIRMATION` (leaving a confirmed status, or reopening one " +
+          "cancelled after it); `isDeleted` `DELETE` / `RESTORE`. Without one: 403.",
+      },
+      // The real check is per change, in the service (quotations.permissions.ts).
+      config: { permission: "QUOTATIONS.VIEW" },
     },
-    async (req) => forViewer(req, await updateQuotation(req.params.id, req.body, actorOf(req))),
+    (req) => updateQuotation(req.params.id, req.body, actorOf(req), req.user.permissions),
   )
 
   app.delete(
