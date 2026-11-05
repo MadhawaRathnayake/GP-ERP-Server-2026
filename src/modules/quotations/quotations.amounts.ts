@@ -1,6 +1,6 @@
 import { Prisma, type DiscountType } from "#generated/prisma/client.js"
 
-// Line and quotation amounts (the formulas are also in schema.prisma above SaleQuotationItem). Plain functions with no
+// Line and quotation amounts (the formulas are also in schema.prisma above QuotationItem). Plain functions with no
 // database access, so quotations.amounts.test.ts can check them directly.
 
 const ZERO = new Prisma.Decimal(0)

@@ -7,7 +7,7 @@ migration `20261104074925_sale_quotations` is applied.
 
 | Area | File |
 |---|---|
-| Tables | `prisma/schema.prisma`: `SaleQuotation`, `SaleQuotationItem`, enums `QuotationStatus`, `DiscountType`; `Setting.vatRate` |
+| Tables | `prisma/schema.prisma`: `Quotation`, `QuotationItem` (were `SaleQuotation`, `SaleQuotationItem`), enums `QuotationType`, `QuotationStatus`, `DiscountType`; `Setting.vatRate` |
 | Permissions | `src/platform/security/permissions.ts`: `QUOTATIONS.VIEW/CREATE/EDIT/DELETE/RESTORE/CONFIRM_PAYMENT/CONFIRM_CREDIT/UNDO_CONFIRMATION/CANCEL/REOPEN`; which action needs which: `src/modules/quotations/quotations.permissions.ts` (+ `.test.ts`) |
 | Amounts | `src/modules/quotations/quotations.amounts.ts` (+ `.test.ts`) |
 | API | `src/modules/quotations/quotations.schema.ts` · `.service.ts` · `.routes.ts` · `.errors.ts` · `.int.test.ts` |
@@ -26,7 +26,16 @@ migration `20261104074925_sale_quotations` is applied.
   its details or lines changed, or be deleted (409 `QUOTATION_NOT_ACTIVE`); restoring a deleted one is always allowed.
   `invoiceCreated` is for the invoice feature; from then on nothing can change (409 `QUOTATION_INVOICED`). The other enum values (`draft`,
   `pending`, `approved`, `rejected`, `accepted`, `declined`, `expired`) are reserved: no route sets them. An approval
-  step, if added, gets its own table pointing at `SaleQuotation.id`.
+  step, if added, gets its own table pointing at `Quotation.id`.
+- **Types.** `type` is `sales` (default; every quotation before 20261105140000), `service` or `warranty`. Each type
+  has its own optional reference fields; the others must be null (400 on create/update, and the CHECK constraint
+  `Quotation_type_fields_check`). Rules in `src/modules/quotations/quotations.types.ts` (+ `.test.ts`):
+  service → `repairReceiveNoteId`, `oldInvoiceId`, `oldSerialNumberId`; warranty → `troubleshootId`, `oldInvoiceId`,
+  `oldSerialNumberId`, `productModel` (text the user types). Changing the type is an edit (`EDIT`, active only) and
+  must send null for the fields the new type can't have. **The referenced modules aren't built yet** (see AGENTS.md →
+  "Modules not built yet"): the ids are unchecked text with no foreign key. `GET /?type=` filters by type.
+- **Payment and delivery** (every type, optional): `paymentTerms` (`cashOnDelivery` | `advancePayment` | null) and
+  `deliveryLocation` (text the user types).
 - **Permissions per action.** `PATCH` checks each change in the service, so a role can be allowed to confirm but not to
   undo, which makes confirming final for it. Details or lines: `EDIT`. Delete: `DELETE`; restore: `RESTORE`.
   To `paymentConfirmed` / `creditConfirmed`: `CONFIRM_PAYMENT` / `CONFIRM_CREDIT`. Cancel: `CANCEL`. Out of a cancelled
@@ -84,7 +93,7 @@ All under `/api/v1/quotations`. Money is a JSON number; dates (`quotationDate`, 
   point from the old system's `GP-System-Client/src/components/pdfGenerator.js` (document `quotation`): same A4 layout,
   styles, company details, terms and bank accounts (hard-coded, typos included). The detail page shows it and offers
   the download (`GPQ-<id> <customer name>.pdf`); cancelled quotations have none, as before.
-- The number is `GPQ-<id>`, the old format. New ids start at 1, so they repeat old numbers unless the `SaleQuotation`
+- The number is `GPQ-<id>`, the old format. New ids start at 1, so they repeat old numbers unless the `Quotation`
   id sequence is moved past the last old `GPQ-` number before go-live.
 - Checked against the old library (v1.6.17, rendered under Node 16) with the same data: every text item at the same
   position, font and size (0.000 mm), on one-page and three-page quotations. Two known differences: the old library

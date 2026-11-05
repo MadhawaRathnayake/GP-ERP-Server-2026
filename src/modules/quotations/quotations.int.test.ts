@@ -53,8 +53,8 @@ beforeAll(async () => {
 
 // Quotations first: their sales manager is a test user, and a user with quotations can't be removed.
 afterAll(async () => {
-  await db.saleQuotationItem.deleteMany({ where: { quotation: { customerId } } })
-  await db.saleQuotation.deleteMany({ where: { customerId } })
+  await db.quotationItem.deleteMany({ where: { quotation: { customerId } } })
+  await db.quotation.deleteMany({ where: { customerId } })
   await restoreSalesManagers()
   await db.customer.deleteMany({ where: { code: `TEST-${stamp}` } })
   await db.product.deleteMany({ where: { sku: `TEST-${stamp}` } })
@@ -150,7 +150,7 @@ describe("quotations", () => {
     expect(res.json()).toMatchObject({ subtotal: 2000, discountTotal: 0, modifiedBy: user.id })
     expect(res.json().items).toHaveLength(1)
     expect(res.json().items[0]).toMatchObject({ lineNo: 1, description: "Two units", quantity: 2 })
-    expect(await db.saleQuotationItem.count({ where: { quotationId: id, isDeleted: true } })).toBe(1)
+    expect(await db.quotationItem.count({ where: { quotationId: id, isDeleted: true } })).toBe(1)
   })
 
   it("needs each status change's own permission, not QUOTATIONS.EDIT", async () => {
@@ -191,7 +191,7 @@ describe("quotations", () => {
 
   it("locks a quotation once it has an invoice", async () => {
     const locked = (await create(user, { customerId, items: [{ productId, quantity: 1 }] })).json().id
-    await db.saleQuotation.update({ where: { id: locked }, data: { status: "invoiceCreated" } })
+    await db.quotation.update({ where: { id: locked }, data: { status: "invoiceCreated" } })
     const edit = await patch(user, locked, { notes: "Too late" })
     expect(edit.statusCode).toBe(409)
     expect(edit.json().error.code).toBe("QUOTATION_INVOICED")
@@ -208,7 +208,7 @@ describe("quotations", () => {
   })
 
   it("soft-deletes and restores", async () => {
-    const changed = waitForChange("SaleQuotation")
+    const changed = waitForChange("Quotation")
     const del = await app.inject({ method: "DELETE", url: `/api/v1/quotations/${id}`, headers: { cookie: user.cookie } })
     expect(del.statusCode).toBe(204)
     await changed
@@ -218,6 +218,19 @@ describe("quotations", () => {
     expect(all.json().data.some((q: { id: number }) => q.id === id)).toBe(true)
     const restored = await patch(user, id, { isDeleted: false })
     expect(restored.json()).toMatchObject({ isDeleted: false, items: [expect.objectContaining({ quantity: 2 })] })
+  })
+
+  it("saves a service quotation's references and clears them when it becomes a sales quotation", async () => {
+    const references = { repairReceiveNoteId: "RRN-1", oldInvoiceId: "INV-1", oldSerialNumberId: "SN-1" }
+    const delivery = { paymentTerms: "advancePayment", deliveryLocation: "Colombo warehouse" }
+    const created = await create(user, { customerId, type: "service", ...references, ...delivery, items: [{ productId, quantity: 1 }] })
+    expect(created.statusCode).toBe(201)
+    expect(created.json()).toMatchObject({ type: "service", ...references, ...delivery, troubleshootId: null, productModel: null })
+
+    const id = created.json().id
+    expect((await patch(user, id, { type: "sales" })).statusCode).toBe(400)
+    const cleared = await patch(user, id, { type: "sales", repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null })
+    expect(cleared.json()).toMatchObject({ type: "sales", repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null })
   })
 
   it("returns 404 for an unknown id", async () => {

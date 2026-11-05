@@ -107,6 +107,18 @@ Report each item as done or not done. A feature isn't finished until all of them
 - **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isDeleted = true`). The audit columns
   `createdBy/createdAt/modifiedBy/modifiedAt` are set from the actor and never accepted from clients.
 
+## Modules not built yet (referenced by quotations)
+
+Repairs (repair received notes), Troubleshoots, Invoices and Serial numbers don't exist yet. `Quotation` already has
+columns for them: `repairReceiveNoteId` (service), `troubleshootId` (warranty), `oldInvoiceId` and
+`oldSerialNumberId` (service and warranty). Until each module exists, its column is optional free text with **no
+foreign key and no check**, and the frontend select for it has no options (shows "Not available yet"). Don't treat
+these as real relations, and don't invent tables for them. When you build one of these modules: change the column to
+that table's id type, add the foreign key (hand-written migration), check the id in `quotations.service.ts`, and give
+the select its options in the client's `QuotationForm`. `productModel` (warranty) is plain text by design, not a
+reference. `INVOICES.VIEW/CREATE` exist, but the client's Create invoice button calls a placeholder
+(`createInvoice` in the client's `pages/Quotations/api.ts`), not an API.
+
 ## Known pitfalls
 
 - zod `.partial()` keeps `.default()`s, so building an update schema from a create schema with defaults makes PATCH

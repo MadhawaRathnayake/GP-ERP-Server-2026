@@ -83,35 +83,35 @@ model User {
   sessions     Session[]
 
   // Rows this user created or last modified (the other side of every table's createdBy/modifiedBy).
-  createdUsers           User[]              @relation("UserCreatedBy")
-  modifiedUsers          User[]              @relation("UserModifiedBy")
-  createdSettings        Setting[]           @relation("SettingCreatedBy")
-  modifiedSettings       Setting[]           @relation("SettingModifiedBy")
-  createdRoles           Role[]              @relation("RoleCreatedBy")
-  modifiedRoles          Role[]              @relation("RoleModifiedBy")
-  createdPermissions     Permission[]        @relation("PermissionCreatedBy")
-  modifiedPermissions    Permission[]        @relation("PermissionModifiedBy")
-  createdCategories      Category[]          @relation("CategoryCreatedBy")
-  modifiedCategories     Category[]          @relation("CategoryModifiedBy")
-  createdProducts        Product[]           @relation("ProductCreatedBy")
-  modifiedProducts       Product[]           @relation("ProductModifiedBy")
-  createdPriceMovements  PriceMovement[]     @relation("PriceMovementCreatedBy")
-  modifiedPriceMovements PriceMovement[]     @relation("PriceMovementModifiedBy")
-  createdCostMovements   CostMovement[]      @relation("CostMovementCreatedBy")
-  modifiedCostMovements  CostMovement[]      @relation("CostMovementModifiedBy")
-  createdStockMovements  StockMovement[]     @relation("StockMovementCreatedBy")
-  modifiedStockMovements StockMovement[]     @relation("StockMovementModifiedBy")
-  createdCustomers       Customer[]          @relation("CustomerCreatedBy")
-  modifiedCustomers      Customer[]          @relation("CustomerModifiedBy")
-  createSuppliers        Supplier[]          @relation("SupplierCreatedBy")
-  modifiedSupplier       Supplier[]          @relation("SupplierModifiedBy")
-  salesManagerQuotations SaleQuotation[]     @relation("SaleQuotationSalesManager")
-  createdQuotations      SaleQuotation[]     @relation("SaleQuotationCreatedBy")
-  modifiedQuotations     SaleQuotation[]     @relation("SaleQuotationModifiedBy")
-  createdQuotationItems  SaleQuotationItem[] @relation("SaleQuotationItemCreatedBy")
-  modifiedQuotationItems SaleQuotationItem[] @relation("SaleQuotationItemModifiedBy")
-  createdUserDropdowns   UserDropdown[]      @relation("UserDropdownCreatedBy")
-  modifiedUserDropdowns  UserDropdown[]      @relation("UserDropdownModifiedBy")
+  createdUsers           User[]          @relation("UserCreatedBy")
+  modifiedUsers          User[]          @relation("UserModifiedBy")
+  createdSettings        Setting[]       @relation("SettingCreatedBy")
+  modifiedSettings       Setting[]       @relation("SettingModifiedBy")
+  createdRoles           Role[]          @relation("RoleCreatedBy")
+  modifiedRoles          Role[]          @relation("RoleModifiedBy")
+  createdPermissions     Permission[]    @relation("PermissionCreatedBy")
+  modifiedPermissions    Permission[]    @relation("PermissionModifiedBy")
+  createdCategories      Category[]      @relation("CategoryCreatedBy")
+  modifiedCategories     Category[]      @relation("CategoryModifiedBy")
+  createdProducts        Product[]       @relation("ProductCreatedBy")
+  modifiedProducts       Product[]       @relation("ProductModifiedBy")
+  createdPriceMovements  PriceMovement[] @relation("PriceMovementCreatedBy")
+  modifiedPriceMovements PriceMovement[] @relation("PriceMovementModifiedBy")
+  createdCostMovements   CostMovement[]  @relation("CostMovementCreatedBy")
+  modifiedCostMovements  CostMovement[]  @relation("CostMovementModifiedBy")
+  createdStockMovements  StockMovement[] @relation("StockMovementCreatedBy")
+  modifiedStockMovements StockMovement[] @relation("StockMovementModifiedBy")
+  createdCustomers       Customer[]      @relation("CustomerCreatedBy")
+  modifiedCustomers      Customer[]      @relation("CustomerModifiedBy")
+  createSuppliers        Supplier[]      @relation("SupplierCreatedBy")
+  modifiedSupplier       Supplier[]      @relation("SupplierModifiedBy")
+  salesManagerQuotations Quotation[]     @relation("QuotationSalesManager")
+  createdQuotations      Quotation[]     @relation("QuotationCreatedBy")
+  modifiedQuotations     Quotation[]     @relation("QuotationModifiedBy")
+  createdQuotationItems  QuotationItem[] @relation("QuotationItemCreatedBy")
+  modifiedQuotationItems QuotationItem[] @relation("QuotationItemModifiedBy")
+  createdUserDropdowns   UserDropdown[]  @relation("UserDropdownCreatedBy")
+  modifiedUserDropdowns  UserDropdown[]  @relation("UserDropdownModifiedBy")
 
   @@index([roleId])
 }
@@ -205,41 +205,41 @@ enum TrackingType {
 // price, cost and the stock columns are the current values; every change to them is also recorded in PriceMovement,
 // CostMovement or StockMovement (products.service.ts). isDeleted = true means deleted.
 model Product {
-  id              String              @id @default(dbgenerated("next_product_id()"))
-  sku             String              @unique // deleted products keep theirs
+  id              String          @id @default(dbgenerated("next_product_id()"))
+  sku             String          @unique // deleted products keep theirs
   title           String
-  description     String              @default("N/A")
+  description     String          @default("N/A")
   categoryId      String
-  category        Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   manufacturer    String?
   countryOfOrigin String?
   imageUrl        String?
   documentUrl     String?
   slug            String?
   warrantyMonths  Int
-  price           Decimal             @default(0) @db.Decimal(14, 2)
-  cost            Decimal             @default(0) @db.Decimal(14, 2)
-  minimumStock    Int                 @default(0)
-  stockInHand     Int                 @default(0)
-  stockPreOrder   Int                 @default(0)
-  stockInTransit  Int                 @default(0)
-  stockOnArrival  Int                 @default(0)
+  price           Decimal         @default(0) @db.Decimal(14, 2)
+  cost            Decimal         @default(0) @db.Decimal(14, 2)
+  minimumStock    Int             @default(0)
+  stockInHand     Int             @default(0)
+  stockPreOrder   Int             @default(0)
+  stockInTransit  Int             @default(0)
+  stockOnArrival  Int             @default(0)
   // Set by the database (Product_set_stock_version) from one counter for all products whenever a stock column
   // changes; never written by the app. Live stock (modules/stock) keeps the value with the higher version.
-  stockVersion    BigInt              @default(0)
+  stockVersion    BigInt          @default(0)
   additionalInfo  String?
   trackingType    TrackingType
   priceMovements  PriceMovement[]
   costMovements   CostMovement[]
   stockMovements  StockMovement[]
-  quotationItems  SaleQuotationItem[]
-  creator         User?               @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  quotationItems  QuotationItem[]
+  creator         User?           @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy       String?
-  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
-  modifier        User?               @relation("ProductModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  modifier        User?           @relation("ProductModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy      String?
-  modifiedAt      DateTime?           @db.Timestamptz(3)
-  isDeleted       Boolean             @default(false)
+  modifiedAt      DateTime?       @db.Timestamptz(3)
+  isDeleted       Boolean         @default(false)
 
   @@index([categoryId])
 }
@@ -325,13 +325,13 @@ enum CustomerType {
 
 // Ids are CUS000001, CUS000002, … (next_customer_id(), hand-written SQL like next_user_id()).
 model Customer {
-  id              String          @id @default(dbgenerated("next_customer_id()"))
+  id              String       @id @default(dbgenerated("next_customer_id()"))
   code            String
   type            CustomerType
   title           String?
   name            String
   email           String?
-  phones          String[]        @default([])
+  phones          String[]     @default([])
   houseNumber     String?
   street          String?
   city            String?
@@ -339,24 +339,24 @@ model Customer {
   province        String?
   country         String
   contactPerson   String?
-  contactPhones   String[]        @default([])
+  contactPhones   String[]     @default([])
   vatNumber       String?
   tinNumber       String?
   pvNumber        String?
-  isCommissioned  Boolean         @default(false)
-  isActive        Boolean         @default(true) //last invoice is less than 6months
-  isDormant       Boolean         @default(false) //last invoice is over 18months
-  lastInvoiceDate DateTime?       @db.Timestamptz(3)
-  totalInvoices   Int             @default(0) // set by the system from invoices, like isActive, isDormant and lastInvoiceDate
+  isCommissioned  Boolean      @default(false)
+  isActive        Boolean      @default(true) //last invoice is less than 6months
+  isDormant       Boolean      @default(false) //last invoice is over 18months
+  lastInvoiceDate DateTime?    @db.Timestamptz(3)
+  totalInvoices   Int          @default(0) // set by the system from invoices, like isActive, isDormant and lastInvoiceDate
   notes           String?
-  quotations      SaleQuotation[]
-  creator         User?           @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  quotations      Quotation[]
+  creator         User?        @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy       String?
-  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
-  modifier        User?           @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  modifier        User?        @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy      String?
-  modifiedAt      DateTime?       @db.Timestamptz(3)
-  isDeleted       Boolean         @default(false)
+  modifiedAt      DateTime?    @db.Timestamptz(3)
+  isDeleted       Boolean      @default(false)
 
   @@index([id])
   @@index([code])
@@ -432,36 +432,66 @@ enum DiscountType {
   fixed // 0–subtotal
 }
 
+// What a quotation is for. Each type has its own reference fields on Quotation (null for the others), enforced by the
+// CHECK constraint "Quotation_type_fields_check" (hand-written SQL, 20261105140000_quotation_types) and by the API:
+//   sales    → none
+//   service  → repairReceiveNoteId, oldInvoiceId, oldSerialNumberId
+//   warranty → troubleshootId, oldInvoiceId, oldSerialNumberId, productModel
+// How the customer pays, printed on the quotation if set. Optional.
+enum QuotationPaymentTerms {
+  cashOnDelivery
+  advancePayment
+}
+
+enum QuotationType {
+  sales
+  service
+  warranty
+}
+
 // Integer ids (high-volume table). The totals are the sums of the non-deleted lines, recalculated by the server
 // whenever the lines change; never accepted from clients. grandTotal = subtotal − discountTotal + taxTotal.
-model SaleQuotation {
-  id             Int                 @id @default(autoincrement())
-  customerId     String
-  customer       Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  salesManagerId String
-  salesManager   User                @relation("SaleQuotationSalesManager", fields: [salesManagerId], references: [id], onDelete: Restrict)
-  quotationDate  DateTime            @db.Date
-  validUntil     DateTime?           @db.Date   // Can set expire date
-  status         QuotationStatus     @default(active)
-  subtotal       Decimal             @default(0) @db.Decimal(14, 2) // Σ line subtotal
-  discountTotal  Decimal             @default(0) @db.Decimal(14, 2) // Σ line discountAmount
-  taxTotal       Decimal             @default(0) @db.Decimal(14, 2) // Σ line taxAmount
-  grandTotal     Decimal             @default(0) @db.Decimal(14, 2) // Σ line lineTotal
-  notes          String? // internal, not printed
-  terms          String? // printed on the quotation
-  items          SaleQuotationItem[]
-  creator        User?               @relation("SaleQuotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy      String?
-  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
-  modifier       User?               @relation("SaleQuotationModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy     String?
-  modifiedAt     DateTime?           @db.Timestamptz(3)
-  isDeleted      Boolean             @default(false)
+// Was SaleQuotation until 20261105140000_quotation_types renamed it.
+// NOT BUILT YET: repairReceiveNoteId, troubleshootId, oldInvoiceId and oldSerialNumberId point at modules that don't
+// exist (repairs, troubleshoots, invoices, serial numbers). They are plain optional text with no foreign key; when a
+// module is built, change its column to that table's id type, add the foreign key and check the id in the service.
+model Quotation {
+  id                  Int                    @id @default(autoincrement())
+  customerId          String
+  customer            Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesManagerId      String
+  salesManager        User                   @relation("QuotationSalesManager", fields: [salesManagerId], references: [id], onDelete: Restrict)
+  quotationDate       DateTime               @db.Date
+  validUntil          DateTime?              @db.Date // Can set expire date
+  status              QuotationStatus        @default(active)
+  subtotal            Decimal                @default(0) @db.Decimal(14, 2) // Σ line subtotal
+  discountTotal       Decimal                @default(0) @db.Decimal(14, 2) // Σ line discountAmount
+  taxTotal            Decimal                @default(0) @db.Decimal(14, 2) // Σ line taxAmount
+  grandTotal          Decimal                @default(0) @db.Decimal(14, 2) // Σ line lineTotal
+  notes               String? // internal, not printed
+  terms               String? // printed on the quotation
+  type                QuotationType          @default(sales)
+  repairReceiveNoteId String? // service only. Repairs module not built yet: no foreign key
+  troubleshootId      String? // warranty only. Troubleshoot module not built yet: no foreign key
+  oldInvoiceId        String? // service and warranty. Invoices module not built yet: no foreign key
+  oldSerialNumberId   String? // service and warranty. Serial numbers module not built yet: no foreign key
+  productModel        String? // warranty only: typed by the user
+  paymentTerms        QuotationPaymentTerms? // any type; null = not set
+  deliveryLocation    String? // any type; typed by the user
+  items               QuotationItem[]
+  creator             User?                  @relation("QuotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy           String?
+  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
+  modifier            User?                  @relation("QuotationModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy          String?
+  modifiedAt          DateTime?              @db.Timestamptz(3)
+  isDeleted           Boolean                @default(false)
 
   @@index([customerId])
   @@index([salesManagerId])
   @@index([status])
   @@index([quotationDate])
+  @@index([type])
 }
 
 // One product line of a quotation. description, unitPrice, unitCost and taxRate are copied from the product and
@@ -472,31 +502,31 @@ model SaleQuotation {
 //   taxAmount      = (subtotal − discountAmount) × taxRate / 100
 //   lineTotal      = subtotal − discountAmount + taxAmount
 // All amounts are calculated by the server and rounded half-up to 2 decimals.
-model SaleQuotationItem {
-  id             Int           @id @default(autoincrement())
+model QuotationItem {
+  id             Int          @id @default(autoincrement())
   quotationId    Int
-  quotation      SaleQuotation @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  quotation      Quotation    @relation(fields: [quotationId], references: [id], onDelete: Restrict)
   lineNo         Int // display order, 1, 2, 3, …
   productId      String
-  product        Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
   description    String // product title at the time, editable per quotation
   quantity       Int // whole units, like Product stock
-  unitPrice      Decimal       @db.Decimal(14, 2) // defaults to Product.price, can be changed
-  unitCost       Decimal       @db.Decimal(14, 2) // Product.cost at the time; for margin, not printed
-  discountType   DiscountType  @default(none)
-  discountValue  Decimal       @default(0) @db.Decimal(14, 2)
-  taxRate        Decimal       @default(0) @db.Decimal(5, 2) // percent, e.g. 18.00
-  subtotal       Decimal       @db.Decimal(14, 2)
-  discountAmount Decimal       @db.Decimal(14, 2)
-  taxAmount      Decimal       @db.Decimal(14, 2)
-  lineTotal      Decimal       @db.Decimal(14, 2)
-  creator        User?         @relation("SaleQuotationItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  unitPrice      Decimal      @db.Decimal(14, 2) // defaults to Product.price, can be changed
+  unitCost       Decimal      @db.Decimal(14, 2) // Product.cost at the time; for margin, not printed
+  discountType   DiscountType @default(none)
+  discountValue  Decimal      @default(0) @db.Decimal(14, 2)
+  taxRate        Decimal      @default(0) @db.Decimal(5, 2) // percent, e.g. 18.00
+  subtotal       Decimal      @db.Decimal(14, 2)
+  discountAmount Decimal      @db.Decimal(14, 2)
+  taxAmount      Decimal      @db.Decimal(14, 2)
+  lineTotal      Decimal      @db.Decimal(14, 2)
+  creator        User?        @relation("QuotationItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy      String?
-  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
-  modifier       User?         @relation("SaleQuotationItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  modifier       User?        @relation("QuotationItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy     String?
-  modifiedAt     DateTime?     @db.Timestamptz(3)
-  isDeleted      Boolean       @default(false)
+  modifiedAt     DateTime?    @db.Timestamptz(3)
+  isDeleted      Boolean      @default(false)
 
   @@index([quotationId, lineNo])
   @@index([productId])

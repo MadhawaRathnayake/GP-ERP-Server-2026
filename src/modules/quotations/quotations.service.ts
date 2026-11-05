@@ -1,4 +1,4 @@
-import { Prisma, type QuotationStatus } from "#generated/prisma/client.js"
+import { Prisma, type QuotationStatus, type QuotationType } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
 import { BadRequestError, ForbiddenError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
@@ -9,6 +9,7 @@ import { getSettings } from "#modules/settings/settings.service.js"
 import { lineAmounts, quotationTotals, roundMoney } from "./quotations.amounts.js"
 import { QuotationInvoicedError, QuotationNotActiveError } from "./quotations.errors.js"
 import { permissionsForChange } from "./quotations.permissions.js"
+import { fieldsNotAllowed } from "./quotations.types.js"
 import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, UpdateQuotationBody } from "./quotations.schema.js"
 
 // A quotation and its lines are saved together. The server works out every amount from the lines (quotations.amounts.ts)
@@ -19,7 +20,7 @@ import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, Upda
 const summaryInclude = {
   customer: { select: { id: true, code: true, name: true } },
   salesManager: { select: { id: true, name: true } },
-} satisfies Prisma.SaleQuotationInclude
+} satisfies Prisma.QuotationInclude
 
 // The detail also carries what the printed quotation shows about the customer and each product, so printing it needs
 // only QUOTATIONS.VIEW.
@@ -47,27 +48,28 @@ const detailInclude = {
     orderBy: { lineNo: "asc" },
     include: { product: { select: { sku: true, description: true, imageUrl: true } } },
   },
-} satisfies Prisma.SaleQuotationInclude
+} satisfies Prisma.QuotationInclude
 
-export type QuotationDetail = Prisma.SaleQuotationGetPayload<{ include: typeof detailInclude }>
+export type QuotationDetail = Prisma.QuotationGetPayload<{ include: typeof detailInclude }>
 
-export function listQuotations({ customerId, salesManagerId, status, from, to, includeDeleted, ...page }: ListQuotationsQuery) {
-  const where: Prisma.SaleQuotationWhereInput = {
+export function listQuotations({ customerId, salesManagerId, status, type, from, to, includeDeleted, ...page }: ListQuotationsQuery) {
+  const where: Prisma.QuotationWhereInput = {
     ...(customerId && { customerId }),
     ...(salesManagerId && { salesManagerId }),
     ...(status && { status }),
+    ...(type && { type }),
     ...((from || to) && { quotationDate: { ...(from && { gte: from }), ...(to && { lte: to }) } }),
     ...(!includeDeleted && { isDeleted: false }),
   }
   return paginate(
     page,
-    (args) => db.saleQuotation.findMany({ where, include: summaryInclude, orderBy: { id: "desc" }, ...args }),
-    () => db.saleQuotation.count({ where }),
+    (args) => db.quotation.findMany({ where, include: summaryInclude, orderBy: { id: "desc" }, ...args }),
+    () => db.quotation.count({ where }),
   )
 }
 
 export async function getQuotation(id: number): Promise<QuotationDetail> {
-  const quotation = await db.saleQuotation.findUnique({ where: { id }, include: detailInclude })
+  const quotation = await db.quotation.findUnique({ where: { id }, include: detailInclude })
   if (!quotation) throw new NotFoundError("Quotation", String(id))
   return quotation
 }
@@ -84,10 +86,10 @@ export async function createQuotation({ items, ...data }: CreateQuotationBody, a
   const lines = await buildLines(items, vatRate)
 
   const { id } = await db.$transaction(async (tx) => {
-    const quotation = await tx.saleQuotation.create({
+    const quotation = await tx.quotation.create({
       data: { ...data, quotationDate, ...quotationTotals(lines), createdBy: actor.id },
     })
-    await tx.saleQuotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: quotation.id, createdBy: actor.id })) })
+    await tx.quotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: quotation.id, createdBy: actor.id })) })
     return quotation
   })
   return getQuotation(id)
@@ -109,10 +111,23 @@ export async function updateQuotation(
 
   await db.$transaction(async (tx) => {
     // Locks the row, so two edits at once can't both replace the lines.
-    await tx.$executeRaw`SELECT 1 FROM "SaleQuotation" WHERE id = ${id} FOR UPDATE`
-    const before = await tx.saleQuotation.findUnique({
+    await tx.$executeRaw`SELECT 1 FROM "Quotation" WHERE id = ${id} FOR UPDATE`
+    const before = await tx.quotation.findUnique({
       where: { id },
-      select: { status: true, isDeleted: true, customerId: true, salesManagerId: true, quotationDate: true, validUntil: true },
+      select: {
+        status: true,
+        isDeleted: true,
+        customerId: true,
+        salesManagerId: true,
+        quotationDate: true,
+        validUntil: true,
+        type: true,
+        repairReceiveNoteId: true,
+        troubleshootId: true,
+        oldInvoiceId: true,
+        oldSerialNumberId: true,
+        productModel: true,
+      },
     })
     if (!before) throw new NotFoundError("Quotation", String(id))
     if (before.status === "invoiceCreated") throw new QuotationInvoicedError(id)
@@ -127,13 +142,15 @@ export async function updateQuotation(
     assertValidUntil(data.quotationDate ?? before.quotationDate, data.validUntil === undefined ? before.validUntil : data.validUntil)
     if (data.customerId && data.customerId !== before.customerId) await assertActiveCustomer(data.customerId)
     if (data.salesManagerId && data.salesManagerId !== before.salesManagerId) await assertSalesManager(data.salesManagerId)
+    // Against the saved values: changing the type means sending null for the fields the new type can't have.
+    assertTypeFields(data.type ?? before.type, { ...before, ...data })
 
     const modified = { modifiedBy: actor.id, modifiedAt: new Date() }
     if (lines) {
-      await tx.saleQuotationItem.updateMany({ where: { quotationId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
-      await tx.saleQuotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: id, createdBy: actor.id })) })
+      await tx.quotationItem.updateMany({ where: { quotationId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
+      await tx.quotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: id, createdBy: actor.id })) })
     }
-    await tx.saleQuotation.update({ where: { id }, data: { ...data, status, ...(lines && quotationTotals(lines)), ...modified } })
+    await tx.quotation.update({ where: { id }, data: { ...data, status, ...(lines && quotationTotals(lines)), ...modified } })
   })
   return getQuotation(id)
 }
@@ -203,6 +220,11 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
 function today(timezone: string) {
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
   return new Date(`${day}T00:00:00.000Z`)
+}
+
+function assertTypeFields(type: QuotationType, values: Parameters<typeof fieldsNotAllowed>[1]) {
+  const fields = fieldsNotAllowed(type, values)
+  if (fields.length > 0) throw new BadRequestError(`A ${type} quotation can't have ${fields.join(", ")}`, { fields })
 }
 
 function assertValidUntil(quotationDate: Date, validUntil: Date | null | undefined) {

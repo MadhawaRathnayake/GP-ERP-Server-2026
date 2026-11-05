@@ -16,7 +16,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: { querystring: listQuotationsQuery, response: { 200: quotationPage } },
-      config: { permission: "QUOTATIONS.VIEW", cache: ["SaleQuotation", "Customer", "User"] },
+      config: { permission: "QUOTATIONS.VIEW", cache: ["Quotation", "Customer", "User"] },
     },
     (req) => listQuotations(req.query),
   )
@@ -37,7 +37,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: quotationIdParams, response: { 200: quotation } },
       config: {
         permission: "QUOTATIONS.VIEW",
-        cache: ["SaleQuotation", "SaleQuotationItem", "Customer", "User", "Product"],
+        cache: ["Quotation", "QuotationItem", "Customer", "User", "Product"],
       },
     },
     (req) => getQuotation(req.params.id),

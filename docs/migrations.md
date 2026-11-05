@@ -50,5 +50,7 @@
 
 | `20261105120000_quotation_action_permissions` | Data only: the `QUOTATIONS` permissions `RESTORE`, `CONFIRM_PAYMENT`, `CONFIRM_CREDIT`, `UNDO_CONFIRMATION`, `CANCEL`, `REOPEN`, granted to every role that had `QUOTATIONS.EDIT` |
 | `20261105130000_remove_quotation_view_cost` | Data only: deletes the `QUOTATIONS.VIEW_COST` permission and its grants (unit cost is now shown to everyone) |
+| `20261105140000_quotation_types` | `SaleQuotation` → `Quotation`, `SaleQuotationItem` → `QuotationItem` (renamed with their sequences, constraints, indexes and cache triggers, so no data moves); enum `QuotationType`; `Quotation.type` (default `sales`) and the nullable `repairReceiveNoteId`, `troubleshootId`, `oldInvoiceId`, `oldSerialNumberId`, `productModel` (after the audit columns, like `Role.isSystem`; no foreign keys: those modules aren't built yet); CHECK `Quotation_type_fields_check` |
+| `20261105150000_quotation_payment_delivery` | enum `QuotationPaymentTerms`; nullable `Quotation.paymentTerms` and `Quotation.deliveryLocation` (after the audit columns, like `Role.isSystem`) |
 
 Add a row for every new migration.

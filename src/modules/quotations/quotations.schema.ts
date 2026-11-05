@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { money } from "#http/fields.js"
 import { pageQuery, pageResult } from "#http/pagination.js"
+import { fieldsNotAllowed, FIELDS_OF_TYPE } from "./quotations.types.js"
 
 const customerId = z.string().regex(/^CUST\d{6,}$/, "Must be a customer id like CUST000001")
 const productId = z.string().regex(/^PROD\d{6,}$/, "Must be a product id like PROD000001")
@@ -39,6 +40,15 @@ export const quotationStatus = z
       "cancelledAfterPayment. invoiceCreated is set by the invoice feature and locks the quotation",
   )
 
+export const quotationType = z
+  .enum(["sales", "service", "warranty"])
+  .describe(
+    `Which reference fields the quotation has: service → ${FIELDS_OF_TYPE.service.join(", ")}; warranty → ` +
+      `${FIELDS_OF_TYPE.warranty.join(", ")}; sales → none. The others must be null`,
+  )
+
+export const paymentTerms = z.enum(["cashOnDelivery", "advancePayment"]).describe("How the customer pays; null = not set")
+
 // The statuses a user may set. The rest are set by the system or reserved for later (see schema.prisma).
 const settableStatus = z.enum(["active", "cancelled", "creditConfirmed", "paymentConfirmed"])
 
@@ -75,6 +85,14 @@ export const quotationSummary = z.object({
   salesManager: party,
   quotationDate: dateOnly,
   validUntil: dateOnly.nullable(),
+  type: quotationType,
+  repairReceiveNoteId: z.string().nullable(),
+  troubleshootId: z.string().nullable(),
+  oldInvoiceId: z.string().nullable(),
+  oldSerialNumberId: z.string().nullable(),
+  productModel: z.string().nullable(),
+  paymentTerms: paymentTerms.nullable(),
+  deliveryLocation: z.string().nullable(),
   status: quotationStatus,
   subtotal: money,
   discountTotal: money,
@@ -112,6 +130,7 @@ export const listQuotationsQuery = pageQuery.extend({
   customerId: customerId.optional(),
   salesManagerId: userId.optional(),
   status: quotationStatus.optional(),
+  type: quotationType.optional(),
   from: dateOnly.optional().describe("Quotation date on or after this day"),
   to: dateOnly.optional().describe("Quotation date on or before this day"),
   includeDeleted: z.stringbool().default(false).describe("Include deleted quotations"),
@@ -138,6 +157,9 @@ const quotationItemInput = z
     }
   })
 
+// Ids from modules that aren't built yet (see quotations.types.ts), so any text for now.
+const referenceId = (what: string) => z.string().trim().min(1).max(100).nullable().describe(`${what} (module not built yet: not checked)`)
+
 // Totals, status and the audit columns aren't here: zod drops them from a request.
 const quotationFields = z.object({
   customerId,
@@ -146,15 +168,38 @@ const quotationFields = z.object({
   validUntil: dateOnly.nullable(),
   notes: z.string().trim().min(1).max(2000).nullable(),
   terms: z.string().trim().min(1).max(5000).nullable(),
+  type: quotationType,
+  repairReceiveNoteId: referenceId("Repair received note, service only"),
+  troubleshootId: referenceId("Troubleshoot, warranty only"),
+  oldInvoiceId: referenceId("Earlier invoice, service and warranty"),
+  oldSerialNumberId: referenceId("Serial number of the item, service and warranty"),
+  productModel: z.string().trim().min(1).max(200).nullable().describe("Product model, typed by the user; warranty only"),
+  paymentTerms: paymentTerms.nullable(),
+  deliveryLocation: z.string().trim().min(1).max(500).nullable().describe("Where to deliver, typed by the user; any type"),
   items: z.array(quotationItemInput).min(1).max(200).describe("In display order. On update, replaces every line"),
 })
 
-export const createQuotationBody = quotationFields.extend({
-  quotationDate: dateOnly.optional().describe("Defaults to today in the company timezone"),
-  validUntil: quotationFields.shape.validUntil.default(null),
-  notes: quotationFields.shape.notes.default(null),
-  terms: quotationFields.shape.terms.default(null),
-})
+export const createQuotationBody = quotationFields
+  .extend({
+    quotationDate: dateOnly.optional().describe("Defaults to today in the company timezone"),
+    validUntil: quotationFields.shape.validUntil.default(null),
+    notes: quotationFields.shape.notes.default(null),
+    terms: quotationFields.shape.terms.default(null),
+    type: quotationType.default("sales"),
+    repairReceiveNoteId: quotationFields.shape.repairReceiveNoteId.default(null),
+    troubleshootId: quotationFields.shape.troubleshootId.default(null),
+    oldInvoiceId: quotationFields.shape.oldInvoiceId.default(null),
+    oldSerialNumberId: quotationFields.shape.oldSerialNumberId.default(null),
+    productModel: quotationFields.shape.productModel.default(null),
+    paymentTerms: quotationFields.shape.paymentTerms.default(null),
+    deliveryLocation: quotationFields.shape.deliveryLocation.default(null),
+  })
+  // An update is checked in the service, against the saved quotation.
+  .superRefine((body, ctx) => {
+    for (const field of fieldsNotAllowed(body.type, body)) {
+      ctx.addIssue({ code: "custom", path: [field], message: `Must be null for a ${body.type} quotation` })
+    }
+  })
 
 // From the fields without defaults (see the pitfall in AGENTS.md).
 export const updateQuotationBody = quotationFields
