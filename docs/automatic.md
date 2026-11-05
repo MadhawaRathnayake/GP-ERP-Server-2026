@@ -36,6 +36,29 @@ Things that run without anyone calling them. If something "just works", it's pro
 - If the listener reconnects after losing its connection, it clears the whole cache, since it may have missed changes.
 - A table without the trigger is never cleared: cached responses stay stale until the TTL.
 
+## Live stock
+
+Two triggers on `Product` (migration `20261105090000_product_stock_version`):
+
+- `Product_set_stock_version`: when an UPDATE changes any of the four stock columns, sets `stockVersion` to the next
+  value of `stock_version_seq` (one counter for all products). An update that leaves stock as it was keeps its version.
+  A new product starts at 0.
+- `Product_notify_stock_change`: after a version change, sends the product's id, four stock columns and
+  `stockVersion` as JSON on channel `stock_change`. Postgres delivers it when the transaction commits; a rollback
+  sends nothing.
+
+Then, on every server instance:
+
+- `db-events.plugin.ts` LISTENs on `stock_change` too (`listenTo`, same connection as the cache) and emits it.
+- `modules/stock/stock.events.ts` validates the payload; `stock.routes.ts` sends it as an `event: stock` to every open
+  `GET /api/v1/stock/events` stream. An invalid payload is logged and dropped.
+- After db-events reconnects, every stream gets `event: resync`: notifications sent while it was disconnected are lost,
+  so clients reload `GET /api/v1/stock`.
+- Each stream sends a `: ping` comment every 25 s (keeps proxies from dropping it) and first re-checks the session and
+  `PRODUCTS.VIEW` without extending the session. Signed out, deactivated or permission removed → the stream ends
+  within 25 s. A failing check (database down) also ends it; the browser reconnects through the normal access check.
+- On shutdown (`preClose`) every stream is ended, so the server doesn't wait for them.
+
 ## Sessions
 
 - Signing in sets an httpOnly cookie (`SESSION_COOKIE_NAME`, default `sid`) holding a random id. The database stores

@@ -73,6 +73,22 @@ export const sessions = {
     return session
   },
 
+  /**
+   * Returns the session without extending its expiry: for re-checking a long-lived connection (an event stream), which
+   * must not keep an idle user signed in.
+   */
+  async peek(id: string): Promise<Session | null> {
+    const hashedId = hash(id)
+    const hit = await cached.get(hashedId)
+    if (hit) return hit
+
+    const row = await db.session.findFirst({
+      where: { id: hashedId, expiresAt: { gt: new Date() } },
+      select: { userId: true, createdAt: true },
+    })
+    return row && { userId: row.userId, createdAt: row.createdAt.toISOString() }
+  },
+
   async destroy(id: string): Promise<void> {
     const hashedId = hash(id)
     await db.session.deleteMany({ where: { id: hashedId } })

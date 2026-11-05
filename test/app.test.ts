@@ -20,7 +20,11 @@ const { SESSION_ID, user } = vi.hoisted(() => ({
 }))
 
 vi.mock("#core/connections.plugin.js", () => ({ default: fp(async () => {}, { name: "connections" }) }))
-vi.mock("#cache/db-events.plugin.js", () => ({ default: fp(async () => {}, { name: "db-events" }) }))
+// The real dbEvents and listenTo stay (the stock module subscribes at startup); only the Postgres connection is skipped.
+vi.mock("#cache/db-events.plugin.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#cache/db-events.plugin.js")>()),
+  default: fp(async () => {}, { name: "db-events" }),
+}))
 vi.mock("#security/permissions-sync.plugin.js", () => ({ default: fp(async () => {}, { name: "permissions-sync" }) }))
 vi.mock("#security/sessions.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("#security/sessions.js")>()
@@ -58,7 +62,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/dropdowns", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -78,6 +82,8 @@ describe("app wiring", () => {
     ["POST", "/api/v1/products/image-upload-url", "PRODUCTS.EDIT"],
     ["PATCH", `/api/v1/products/${aProductId}`, "PRODUCTS.EDIT"],
     ["DELETE", `/api/v1/products/${aProductId}`, "PRODUCTS.DELETE"],
+    ["GET", "/api/v1/stock", "PRODUCTS.VIEW"],
+    ["GET", "/api/v1/stock/events", "PRODUCTS.VIEW"],
     ["GET", "/api/v1/categories", "CATEGORY.VIEW"],
     ["GET", `/api/v1/categories/${aCategoryId}`, "CATEGORY.VIEW"],
     ["POST", "/api/v1/categories", "CATEGORY.CREATE"],

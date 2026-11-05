@@ -19,7 +19,7 @@ For how to add an API, permissions, caching and errors, see the [README](README.
                                    ▼                                                      ▼
  ┌─ modules/ — business capabilities ────────────────────────────────────────────────────────────────┐
  │  products · categories · customers · suppliers · quotations · users · roles · settings · dropdowns │
- │  · auth · permissions · health                                                                     │
+ │  · stock · auth · permissions · health                                                             │
  │  services hold the business rules and know nothing about HTTP, cookies or who called them          │
  └─────────────────┬──────────────────────────────────────────────────────┬───────────────────────────┘
                    ▼                                                      ▼
@@ -39,7 +39,8 @@ src/
 ├─ platform/           HOW the app works: no business rules, rarely edited
 │  ├─ core/            db · redis · logger · connections.plugin
 │  ├─ cache/           cache · route-cache.plugin · db-events.plugin
-│  ├─ http/            api-version · errors · pagination · fields · error-handler.plugin · swagger.plugin
+│  ├─ http/            api-version · errors · pagination · fields · event-stream · error-handler.plugin ·
+│  │                   swagger.plugin
 │  └─ security/        permissions (codes) · permission-table · current-user · sessions · password ·
 │                      auth.plugin · permissions-sync.plugin
 ├─ modules/<name>/     WHAT the app does: one folder per business capability, mounted at /api/v1/<name>
@@ -90,6 +91,27 @@ audit columns and deactivation, works the same for every client.
 - **Breaking changes need a new version:** a removed or renamed field, a field that changes meaning, a newly required
   input. Add the new route next to the old one, call the same service from both, and keep v1 until no supported app
   version uses it.
+
+## Live updates to browsers
+
+Used for live stock (`modules/stock`); reuse the same pieces for any other value that must update on open screens.
+
+```
+any write ──commit──▶ Postgres trigger: pg_notify('<channel>', JSON)
+  → cache/db-events.plugin.ts    one LISTEN connection for every channel (listenTo), reconnects, emits "reconnect"
+  → modules/<name>/<name>.events.ts   validates the payload, tells its watchers
+  → http/event-stream.ts         an EventStreamGroup broadcasts to every open text/event-stream response
+  → browser EventSource
+```
+
+- **The database is the source of the event**, not the service: every writer is covered, and a rolled-back change is
+  never announced (Postgres delivers a notification only on commit).
+- **Notifications are not durable.** A client never relies on receiving every event: it reloads a snapshot route
+  whenever its stream (re)connects or gets `resync` (sent after db-events reconnects).
+- **Every value carries a version** set by the database, so the client keeps the newer one whatever order snapshots,
+  events and other responses arrive in.
+- **Streams re-check access** before every heartbeat (`isStillAuthorized`, which doesn't extend the session) and are
+  ended in `preClose`, so they don't hold up shutdown. Several server instances work as they are: each one LISTENs.
 
 ## Extending
 

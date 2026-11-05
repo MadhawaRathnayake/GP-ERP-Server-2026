@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { money } from "#http/fields.js"
+import { bigintNumber, money } from "#http/fields.js"
 import { pageQuery, pageResult } from "#http/pagination.js"
 import { IMAGE_TYPES, type ImageType } from "./products.images.js"
 
@@ -29,6 +29,7 @@ export const product = z.object({
   stockPreOrder: z.number().int(),
   stockInTransit: z.number().int(),
   stockOnArrival: z.number().int(),
+  stockVersion: bigintNumber.describe("Goes up with every stock change; set by the database. See GET /api/v1/stock/events"),
   additionalInfo: z.string().nullable(),
   trackingType,
   createdBy: z.string().nullable(),

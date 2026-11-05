@@ -224,6 +224,9 @@ model Product {
   stockPreOrder   Int                 @default(0)
   stockInTransit  Int                 @default(0)
   stockOnArrival  Int                 @default(0)
+  // Set by the database (Product_set_stock_version) from one counter for all products whenever a stock column
+  // changes; never written by the app. Live stock (modules/stock) keeps the value with the higher version.
+  stockVersion    BigInt              @default(0)
   additionalInfo  String?
   trackingType    TrackingType
   priceMovements  PriceMovement[]

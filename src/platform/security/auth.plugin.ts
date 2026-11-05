@@ -74,6 +74,18 @@ async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+/**
+ * Runs the request's access check again, without extending the session: for a response that stays open for hours (an
+ * event stream). False once the user signed out, was deactivated, or lost the route's permission.
+ */
+export async function isStillAuthorized(request: FastifyRequest): Promise<boolean> {
+  const session = await sessions.peek(request.sessionId)
+  if (!session || session.userId !== request.user.id) return false
+  const user = await getCurrentUser(session.userId)
+  const { permission } = request.routeOptions.config
+  return !!user && (!permission || user.permissions.includes(permission))
+}
+
 // Registered inside the /api/v1 scope in app.ts, so /docs stays outside it.
 export default fp(
   async (app) => {
