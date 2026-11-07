@@ -21,7 +21,13 @@
 
 - **Never edit a migration that's applied.** Prisma checksums them. Write a new one. To see which are applied, look
   at the `_prisma_migrations` table.
-- An unapplied migration may still be edited.
+- An unapplied migration may still be edited. `npx prisma migrate status` shows which are applied (read-only).
+- A hand-written migration goes in `prisma/migrations/<YYYYMMDDHHMMSS>_<name>/migration.sql`, timestamped after the
+  newest one. Don't use `npm run db:migrate` for it: that creates and applies in one step, with no chance to add data
+  steps (e.g. copying values into a new column).
+- **Agents don't apply migrations.** Claude Code's auto mode blocks writes to `ERP-DB`, so ask the user to run
+  `! npm run db:deploy`, then check that the `migrate diff` above prints nothing. `npx prisma generate` before the
+  migration is applied breaks the running dev server for every query on the changed tables, so say so when you hand over.
 - Mark SQL written by hand with `-- hand-written:`.
 - Every table needs a `<Table>_notify_change` trigger, or the cache is never cleared for it
   ([automatic.md](automatic.md#cache-invalidation)). `npm run db:migrate` adds it; add it yourself to a hand-written
@@ -54,5 +60,7 @@
 | `20261105150000_quotation_payment_delivery` | enum `QuotationPaymentTerms`; nullable `Quotation.paymentTerms` and `Quotation.deliveryLocation` (after the audit columns, like `Role.isSystem`) |
 | `20261105160000_quotation_number` | `Quotation.quotationNumber` (unique, `GPQ-0000001`) from `next_quotation_number()` and `quotation_number_seq`; existing quotations numbered from their id, the sequence set past the highest |
 | `20261105170000_quotation_service_charge` | `Quotation.serviceCharge`, `serviceTaxRate` (service only) and `isPreOrdered` (sales only, default false), after the audit columns like `Role.isSystem`; CHECKs `Quotation_service_charge_check` and `Quotation_pre_order_check` |
+| `20261106090000_invoices` | Replaces the never-migrated draft `Invoice` model: enums `InvoiceStatus`, `InvoicePaymentMethod`; tables `Invoice`, `InvoiceItem` (integer ids) and `InvoiceNumberCounter`; `next_invoice_number(kind, day, branch)`; partial unique index `Invoice_quotationId_live_key`; CHECKs `Invoice_type_fields_check`, `Invoice_service_charge_check`, `Invoice_payment_details_check`, `Invoice_number_check`; cache triggers; `Setting.invoiceBranchCode` (default `GP01`, after the audit columns like `Setting.vatRate`) |
+| `20261106120000_role_branch_code` | Moves the invoice branch code from `Setting.invoiceBranchCode` (dropped) to `Role.branchCode` (default `GP01`, after the audit columns like `Role.isSystem`); existing roles take the setting's value. `InvoiceNumberCounter` gets `branch` in its key, existing rows the setting's value, and `next_invoice_number()` counts per branch. |
 
 Add a row for every new migration.

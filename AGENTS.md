@@ -23,6 +23,7 @@ Read the relevant section there instead of guessing.
    change. Do it without asking.
 4. **The database is shared and real (`ERP-DB`).** Never reset, drop or `prisma db push`. Never run `npm run db:seed`,
    insert data, or run `npm run test:int` without asking (the integration tests use `ERP-DB` and use up user ids).
+   Write migrations, but let the user apply them (`docs/migrations.md` → Rules).
 5. **Secrets:** don't read or print `.env`; use `.env.example` for variable names. Mask passwords in any URL you show.
 6. **Frontend (`../GP-ERP-Client`):** it has its own `AGENTS.md`. Don't edit it unless asked; tell the user which change the
    frontend needs.
@@ -107,17 +108,20 @@ Report each item as done or not done. A feature isn't finished until all of them
 - **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isDeleted = true`). The audit columns
   `createdBy/createdAt/modifiedBy/modifiedAt` are set from the actor and never accepted from clients.
 
-## Modules not built yet (referenced by quotations)
+## Modules not built yet (referenced by quotations and invoices)
 
-Repairs (repair received notes), Troubleshoots, Invoices and Serial numbers don't exist yet. `Quotation` already has
+Repairs (repair received notes), Troubleshoots, Serial numbers and Delivery notes don't exist yet. (Invoices exist:
+`src/modules/invoices/`; `oldInvoiceId` still holds an invoice number from the old system, as free text.) `Quotation` already has
 columns for them: `repairReceiveNoteId` (service), `troubleshootId` (warranty), `oldInvoiceId` and
 `oldSerialNumberId` (service and warranty). Until each module exists, its column is optional free text with **no
 foreign key and no check**, and the frontend select for it has no options (shows "Not available yet"). Don't treat
 these as real relations, and don't invent tables for them. When you build one of these modules: change the column to
 that table's id type, add the foreign key (hand-written migration), check the id in `quotations.service.ts`, and give
-the select its options in the client's `QuotationForm`. `productModel` (warranty) is plain text by design, not a
-reference. `INVOICES.VIEW/CREATE` exist, but the client's Create invoice button calls a placeholder
-(`createInvoice` in the client's `pages/Quotations/api.ts`), not an API.
+the select its options in the client's `pages/Quotations/lines.ts` (`referenceOptions`, used by the quotation and
+invoice forms). `productModel` (warranty) is plain text by design, not a reference. `Invoice` copies the same columns
+from its quotation. Invoices also wait for: serial numbers per line, a delivery note on finalize (a delivered one
+changes how a cancel gives back the stock), and troubleshoot/repair status updates; see the note at the top of
+`invoices.service.ts`.
 
 ## Known pitfalls
 

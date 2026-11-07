@@ -58,6 +58,10 @@ export const PERMISSIONS = {
   INVOICES: {
     VIEW: "View invoices",
     CREATE: "Create an invoice from a confirmed quotation",
+    CREATE_DIRECT: "Create an invoice without a quotation",
+    EDIT: "Edit draft invoices: prices, discounts, lines, payment and notes",
+    FINALIZE: "Finalize draft invoices (gives the invoice number and moves the stock)",
+    CANCEL: "Cancel invoices (gives back the stock and the quotation)",
   },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>

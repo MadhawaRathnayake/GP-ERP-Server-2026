@@ -48,6 +48,7 @@ const aCategoryId = "CAT0002"
 const aCustomerId = "CUST000002"
 const aSupplierId = "SUP00002"
 const aQuotationId = 2
+const anInvoiceId = 3
 const aUserId = "USER00002"
 const aRoleId = "ROLE0002"
 
@@ -62,7 +63,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -105,6 +106,14 @@ describe("app wiring", () => {
     ["POST", "/api/v1/quotations", "QUOTATIONS.CREATE"],
     ["PATCH", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.VIEW"],
     ["DELETE", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.DELETE"],
+    ["GET", "/api/v1/invoices", "INVOICES.VIEW"],
+    ["GET", "/api/v1/invoices/sales-managers", "INVOICES.CREATE_DIRECT"],
+    ["GET", `/api/v1/invoices/${anInvoiceId}`, "INVOICES.VIEW"],
+    ["POST", "/api/v1/invoices", "INVOICES.CREATE"],
+    ["POST", "/api/v1/invoices/direct", "INVOICES.CREATE_DIRECT"],
+    ["PATCH", `/api/v1/invoices/${anInvoiceId}`, "INVOICES.EDIT"],
+    ["POST", `/api/v1/invoices/${anInvoiceId}/finalize`, "INVOICES.FINALIZE"],
+    ["POST", `/api/v1/invoices/${anInvoiceId}/cancel`, "INVOICES.CANCEL"],
     ["GET", "/api/v1/dropdowns", "DROPDOWNS.VIEW"],
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],
     ["GET", "/api/v1/users", "ADMIN.VIEW"],

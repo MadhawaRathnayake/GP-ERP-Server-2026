@@ -10,8 +10,8 @@ const userId = z.string().regex(/^USER\d{5,}$/, "Must be a user id like USER0000
 // The id column is a Postgres integer, so anything above 2^31 − 1 can't exist (and would fail in Prisma, not 404).
 export const quotationIdParams = z.object({ id: z.coerce.number().int().positive().max(2147483647) })
 
-/** A @db.Date column: "2026-11-04" in requests and responses, a Date at UTC midnight in code. */
-const dateOnly = z
+/** A @db.Date column: "2026-11-04" in requests and responses, a Date at UTC midnight in code. Also used by invoices. */
+export const dateOnly = z
   .codec(z.iso.date(), z.date(), {
     decode: (day) => new Date(`${day}T00:00:00.000Z`),
     encode: (date) => date.toISOString().slice(0, 10),
@@ -142,8 +142,8 @@ export const listQuotationsQuery = pageQuery.extend({
 
 const amount = money.refine((value) => value.gte(0), "Must be 0 or more")
 
-// What a client sends for a line. unitCost, taxRate and the amounts are always set by the server.
-const quotationItemInput = z
+// What a client sends for a line. unitCost, taxRate and the amounts are always set by the server. Invoice lines too.
+export const quotationItemInput = z
   .object({
     productId,
     description: z.string().trim().min(1).max(500).optional().describe("Defaults to the product title"),

@@ -31,7 +31,7 @@ describe("roles", () => {
 
   it("creates, lists, gets and updates a role with its permissions", async () => {
     const name = roleName("clerk")
-    const created = await post({ name, description: "Front desk", permissions: ["DASHBOARD.VIEW"] })
+    const created = await post({ name, description: "Front desk", branchCode: "GP02", permissions: ["DASHBOARD.VIEW"] })
     expect(created.statusCode).toBe(201)
     const { id } = created.json()
     expect(id).toMatch(/^ROLE\d{4,}$/)
@@ -40,7 +40,7 @@ describe("roles", () => {
     expect(list.json().some((r: { id: string }) => r.id === id)).toBe(true)
 
     const updated = await patch(id, { permissions: ["DASHBOARD.VIEW", "REPORTS.VIEW"] })
-    expect(updated.json()).toMatchObject({ name, description: "Front desk" })
+    expect(updated.json()).toMatchObject({ name, description: "Front desk", branchCode: "GP02" })
     expect(updated.json().permissions.sort()).toEqual(["DASHBOARD.VIEW", "REPORTS.VIEW"])
 
     const renamed = await patch(id, { description: "Reception" })
@@ -49,8 +49,8 @@ describe("roles", () => {
 
   it("rejects a duplicate name with a clear message", async () => {
     const name = roleName("dup")
-    expect((await post({ name })).statusCode).toBe(201)
-    const res = await post({ name })
+    expect((await post({ name, branchCode: "GP01" })).statusCode).toBe(201)
+    const res = await post({ name, branchCode: "GP01" })
     expect(res.statusCode).toBe(409)
     expect(res.json().error.message).toBe("A role with this name already exists")
   })

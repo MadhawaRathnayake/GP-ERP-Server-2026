@@ -22,18 +22,18 @@ datasource db {
 
 // Single-row table (id = 1) holding company-wide business settings. See modules/settings.
 model Setting {
-  id         Int       @id @default(1)
-  currency   String    @db.Char(3) // ISO 4217, e.g. LKR
-  country    String    @db.Char(2) // ISO 3166-1 alpha-2, e.g. LK
-  timezone   String // IANA, e.g. Asia/Colombo
-  vatRate    Decimal   @default(18) @db.Decimal(5, 2) // percent; copied onto each quotation line when the line is saved
-  creator    User?     @relation("SettingCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy  String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
-  modifier   User?     @relation("SettingModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy String?
-  modifiedAt DateTime? @db.Timestamptz(3)
-  isDeleted  Boolean   @default(false)
+  id                Int       @id @default(1)
+  currency          String    @db.Char(3) // ISO 4217, e.g. LKR
+  country           String    @db.Char(2) // ISO 3166-1 alpha-2, e.g. LK
+  timezone          String // IANA, e.g. Asia/Colombo
+  vatRate           Decimal   @default(18) @db.Decimal(5, 2) // percent; copied onto each quotation line when the line is saved
+  creator           User?     @relation("SettingCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy         String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  modifier          User?     @relation("SettingModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy        String?
+  modifiedAt        DateTime? @db.Timestamptz(3)
+  isDeleted         Boolean   @default(false)
 }
 
 // Where a user dropdown takes its users from: the users picked one by one, or every active user with a picked role.
@@ -112,8 +112,13 @@ model User {
   modifiedQuotationItems QuotationItem[] @relation("QuotationItemModifiedBy")
   createdUserDropdowns   UserDropdown[]  @relation("UserDropdownCreatedBy")
   modifiedUserDropdowns  UserDropdown[]  @relation("UserDropdownModifiedBy")
+  salesManagerInvoices   Invoice[]       @relation("InvoiceSalesManager")
+  finalizedInvoices      Invoice[]       @relation("InvoiceFinalizedBy")
+  cancelledInvoices      Invoice[]       @relation("InvoiceCancelledBy")
   createdInvoices        Invoice[]       @relation("InvoiceCreatedBy")
   modifiedInvoices       Invoice[]       @relation("InvoiceModifiedBy")
+  createdInvoiceItems    InvoiceItem[]   @relation("InvoiceItemCreatedBy")
+  modifiedInvoiceItems   InvoiceItem[]   @relation("InvoiceItemModifiedBy")
 
   @@index([roleId])
 }
@@ -139,6 +144,7 @@ model Role {
   name        String           @unique
   description String           @default("")
   isSystem    Boolean          @default(false)
+  branchCode  String           @default("GP01") // the middle part of the invoice numbers its users make, 26NOV_GP01_14
   permissions RolePermission[]
   users       User[]           @relation("UserRole")
   creator     User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -235,6 +241,7 @@ model Product {
   costMovements   CostMovement[]
   stockMovements  StockMovement[]
   quotationItems  QuotationItem[]
+  invoiceItems    InvoiceItem[]
   creator         User?           @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy       String?
   createdAt       DateTime        @default(now()) @db.Timestamptz(3)
@@ -345,7 +352,7 @@ model Customer {
   vatNumber       String?
   tinNumber       String?
   pvNumber        String?
-  isCommissioned  Boolean      @default(false)
+  isCommissioned  Boolean      @default(false) // gets special offers (large or frequent orders); flagged for sales staff, no price logic
   isActive        Boolean      @default(true) //last invoice is less than 6months
   isDormant       Boolean      @default(false) //last invoice is over 18months
   lastInvoiceDate DateTime?    @db.Timestamptz(3)
@@ -486,6 +493,7 @@ model Quotation {
   serviceTaxRate      Decimal?               @db.Decimal(5, 2) // service only: VAT percent from the settings when the charge was saved
   isPreOrdered        Boolean                @default(false) // sales only
   items               QuotationItem[]
+  invoices            Invoice[] // at most one that isn't cancelled (index "Invoice_quotationId_live_key")
   creator             User?                  @relation("QuotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy           String?
   createdAt           DateTime               @default(now()) @db.Timestamptz(3)
@@ -541,29 +549,127 @@ model QuotationItem {
 
 // ─── Invoices ───────────────────────────────────────────────────────────────────
 
+// draft (editable, no stock moved) → finalized (numbered, stock moved inHand → inTransit) → cancelled. A draft can be
+// cancelled too. Cancelling gives the stock back (finalized only) and the quotation its status before the invoice.
+enum InvoiceStatus {
+  draft
+  finalized
+  cancelled
+}
+
+// How the customer pays. Required on sales and service invoices, optional on warranty ones (checked by the API).
 enum InvoicePaymentMethod {
   cash
   credit
-  check
+  cheque
   bankTransfer
 }
 
+// Integer ids (high-volume table). Made from a quotation (quotationId) or, with INVOICES.CREATE_DIRECT, without one.
+// The header (customer, sales manager, type and its references, payment terms, delivery location) is copied from the
+// quotation; the lines and the service charge start as the quotation's and can be repriced. The totals work like
+// Quotation's: sums of the non-deleted lines, or the service charge plus VAT, always worked out by the server.
+// Hand-written SQL (20261106090000_invoices): the CHECKs "Invoice_type_fields_check", "Invoice_service_charge_check",
+// "Invoice_payment_details_check" and "Invoice_number_check", and the partial unique index
+// "Invoice_quotationId_live_key" (one invoice that isn't cancelled per quotation).
+// NOT BUILT YET: as on Quotation, the reference columns are plain text with no foreign key.
 model Invoice {
-  id               Int                    @id @default(autoincrement())
-  InvoiceNumber    String
-  type             QuotationType
-  customerId       String
-  customer         Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  paymentmethod    InvoicePaymentMethod
-  paymentTerms     QuotationPaymentTerms?
-  dueDate          DateTime
-  deliveryLocation String?
+  id                    Int                    @id @default(autoincrement())
+  draftNumber           String                 @unique // 26NOV_GP01_3-draft: next_invoice_number('draft', …) on create
+  invoiceNumber         String?                @unique // 26NOV_GP01_14: next_invoice_number('final', …) on finalize
+  status                InvoiceStatus          @default(draft)
+  quotationId           Int?
+  quotation             Quotation?             @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  quotationStatusBefore QuotationStatus? // the quotation's status before it was invoiced; given back on cancel
+  customerId            String
+  customer              Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesManagerId        String
+  salesManager          User                   @relation("InvoiceSalesManager", fields: [salesManagerId], references: [id], onDelete: Restrict)
+  type                  QuotationType          @default(sales) // same types and rules as quotations (quotations.types.ts)
+  repairReceiveNoteId   String? // service only
+  troubleshootId        String? // warranty only
+  oldInvoiceId          String? // service and warranty
+  oldSerialNumberId     String? // service and warranty
+  productModel          String? // warranty only
+  paymentTerms          QuotationPaymentTerms?
+  deliveryLocation      String?
+  paymentMethod         InvoicePaymentMethod?
+  paymentDetails        String? // cheque number and bank, or the bank of a transfer; only with those methods
+  dueDate               DateTime               @db.Date
+  serviceCharge         Decimal?               @db.Decimal(14, 2) // service only: the price, instead of product lines
+  serviceTaxRate        Decimal?               @db.Decimal(5, 2) // service only: VAT percent when the charge was saved
+  subtotal              Decimal                @default(0) @db.Decimal(14, 2)
+  discountTotal         Decimal                @default(0) @db.Decimal(14, 2)
+  taxTotal              Decimal                @default(0) @db.Decimal(14, 2)
+  grandTotal            Decimal                @default(0) @db.Decimal(14, 2)
+  notes                 String? // internal, not printed
+  finalizer             User?                  @relation("InvoiceFinalizedBy", fields: [finalizedBy], references: [id], onDelete: SetNull)
+  finalizedBy           String?
+  finalizedAt           DateTime?              @db.Timestamptz(3) // the invoice date printed on a finalized invoice
+  canceller             User?                  @relation("InvoiceCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  cancelledBy           String?
+  cancelledAt           DateTime?              @db.Timestamptz(3)
+  items                 InvoiceItem[]
+  creator               User?                  @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy             String?
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  modifier              User?                  @relation("InvoiceModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy            String?
+  modifiedAt            DateTime?              @db.Timestamptz(3)
+  isDeleted             Boolean                @default(false)
 
-  creator    User?     @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  @@index([quotationId])
+  @@index([customerId])
+  @@index([salesManagerId])
+  @@index([status])
+}
+
+// One product line of an invoice: the same columns and formulas as QuotationItem. It keeps its own price and cost,
+// copied from the quotation's line or the product when the line is saved, so a repriced invoice still shows what the
+// quotation said. Saving new lines soft-deletes the old ones.
+model InvoiceItem {
+  id             Int          @id @default(autoincrement())
+  invoiceId      Int
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  lineNo         Int
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  description    String
+  quantity       Int
+  unitPrice      Decimal      @db.Decimal(14, 2)
+  unitCost       Decimal      @db.Decimal(14, 2) // Product.cost when the line was saved; for margin, not printed
+  discountType   DiscountType @default(none)
+  discountValue  Decimal      @default(0) @db.Decimal(14, 2)
+  taxRate        Decimal      @default(0) @db.Decimal(5, 2)
+  subtotal       Decimal      @db.Decimal(14, 2)
+  discountAmount Decimal      @db.Decimal(14, 2)
+  taxAmount      Decimal      @db.Decimal(14, 2)
+  lineTotal      Decimal      @db.Decimal(14, 2)
+  creator        User?        @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy      String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  modifier       User?        @relation("InvoiceItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy     String?
+  modifiedAt     DateTime?    @db.Timestamptz(3)
+  isDeleted      Boolean      @default(false)
+
+  @@index([invoiceId, lineNo])
+  @@index([productId])
+}
+
+// The last invoice number given per kind (draft | final), month (26NOV) and branch (Role.branchCode), so each branch
+// counts on its own and numbers restart at 1 every month.
+// Written only by next_invoice_number() (hand-written SQL), never by the app; createdBy/modifiedBy stay NULL.
+model InvoiceNumberCounter {
+  kind       String
+  period     String
+  branch     String
+  value      Int
   createdBy  String?
   createdAt  DateTime  @default(now()) @db.Timestamptz(3)
-  modifier   User?     @relation("InvoiceModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
   modifiedBy String?
   modifiedAt DateTime? @db.Timestamptz(3)
   isDeleted  Boolean   @default(false)
+
+  @@id([kind, period, branch])
 }

@@ -3,7 +3,12 @@ import { createRoleBody, roleIdParams, updateRoleBody } from "./roles.schema.js"
 
 describe("role bodies", () => {
   it("fills defaults on create", () => {
-    expect(createRoleBody.parse({ name: "Clerk" })).toEqual({ name: "Clerk", description: "", permissions: [] })
+    expect(createRoleBody.parse({ name: "Clerk", branchCode: "GP01" })).toEqual({ name: "Clerk", description: "", branchCode: "GP01", permissions: [] })
+  })
+
+  it("needs a branch code of capital letters and digits", () => {
+    expect(createRoleBody.safeParse({ name: "Clerk" }).success).toBe(false)
+    expect(createRoleBody.safeParse({ name: "Clerk", branchCode: "gp-01" }).success).toBe(false)
   })
 
   it("leaves fields that a PATCH doesn't send untouched", () => {

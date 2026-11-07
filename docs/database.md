@@ -56,6 +56,7 @@ zod removes every key a request schema doesn't list. The create and update schem
 | Supplier | `SUP` + 5 digits | `next_supplier_id()` | `SUP00001` |
 | PriceMovement, CostMovement, StockMovement | integer | `autoincrement()` | `1` |
 | Quotation, QuotationItem | integer | `autoincrement()` | `1` |
+| Invoice, InvoiceItem | integer | `autoincrement()` | `1` |
 | Session | SHA-256 of the cookie id | the app | |
 | Setting | always `1` | | |
 | UserDropdown | the dropdown's code, e.g. `SALES_MANAGER` | `USER_DROPDOWNS` in `modules/dropdowns/dropdowns.ts` | `SALES_MANAGER` |
@@ -81,7 +82,7 @@ zod removes every key a request schema doesn't list. The create and update schem
 
 - **Audit columns last**, in this order: `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`, `isDeleted`. Only
   `Session` and `RolePermission` go without them. `test/schema.test.ts` fails otherwise. It checks `schema.prisma`, not
-  the database: in the database, `Role.isSystem` sits after them because it was added to a table with data.
+  the database: in the database, `Role.isSystem` and `Role.branchCode` sit after them because they were added to a table with data.
 - **Time:** `@db.Timestamptz(3)`, stored in UTC. The frontend shows it in the company timezone (`Setting.timezone`).
 - **Money:** `Decimal @db.Decimal(14, 2)`, sent as a JSON number through `money` from `#http/fields.js`.
 - **`passwordHash` is never loaded** unless a query asks for it (`omit: { passwordHash: false }`), set globally in

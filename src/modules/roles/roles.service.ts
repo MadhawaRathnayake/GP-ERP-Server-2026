@@ -37,7 +37,7 @@ export async function createRole({ permissions, ...data }: CreateRoleBody, actor
 }
 
 export async function updateRole(id: string, { permissions, ...changes }: UpdateRoleBody, actor: Pick<CurrentUser, "id" | "roleId">) {
-  // Only the description of a system role can change. An unknown id falls through to the update's 404.
+  // Only the description and branch code of a system role can change. An unknown id falls through to the update's 404.
   const current = await db.role.findUnique({ where: { id }, select: { isSystem: true } })
   if (current?.isSystem && (permissions !== undefined || changes.name !== undefined)) throw new SystemRoleError()
 
