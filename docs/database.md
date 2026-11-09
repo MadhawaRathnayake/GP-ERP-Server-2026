@@ -58,6 +58,7 @@ zod removes every key a request schema doesn't list. The create and update schem
 | PriceMovement, CostMovement, StockMovement | integer | `autoincrement()` | `1` |
 | Quotation, QuotationItem | integer | `autoincrement()` | `1` |
 | Invoice, InvoiceItem | integer | `autoincrement()` | `1` |
+| InternalRequisition, InternalRequisitionItem | integer | `autoincrement()` | `1` |
 | Session | SHA-256 of the cookie id | the app | |
 | Setting | always `1` | | |
 | UserDropdown | the dropdown's code, e.g. `SALES_MANAGER` | `USER_DROPDOWNS` in `modules/dropdowns/dropdowns.ts` | `SALES_MANAGER` |

@@ -1,6 +1,8 @@
-# Supply: internal requisitions, purchase orders, GRNs (porting brief)
+# Procurement: internal requisitions, purchase orders, GRNs (porting brief)
 
-Status: **not started**. This is the starting point. Analyse the old system, fill in §5 with the owner, then build.
+Status: **internal requisitions built (server)**: `src/modules/internal-requisitions/`, with approval (`modules/approvals`)
+instead of the old `poCreated`/`poApproved`/`grnCreated` IR statuses (see the comment on `InternalRequisitionStatus`).
+Next: the client pages, then purchase orders and GRNs. Analyse the old system, fill in §5 with the owner, then build.
 
 ## 0. Read first
 
@@ -20,7 +22,7 @@ Status: **not started**. This is the starting point. Analyse the old system, fil
 
 ## 1. Scope
 
-A new sidebar section **Supply**: `section: "Supply"` on each link in `src/app/layout/navigation.ts` (the sidebar draws
+A new sidebar section **Procurement**: `section: "Procurement"` on each link in `src/app/layout/navigation.ts` (the sidebar draws
 the heading). The old chain, in order:
 
 1. **Internal requisition (IR)**: a request to buy.

@@ -82,6 +82,14 @@ export const PERMISSIONS = {
     SET_VERIFIER: "Add or change the item verifier of draft delivery notes",
     SET_ISSUER: "Add the item issuer, which issues the delivery note",
   },
+  INTERNAL_REQUISITIONS: {
+    VIEW: "View internal requisitions",
+    CREATE: "Create internal requisitions",
+    EDIT: "Edit pending and rejected internal requisitions (editing a rejected one resubmits it)",
+    APPROVE: "Approve pending internal requisitions",
+    REJECT: "Reject pending internal requisitions, with a reason",
+    CANCEL: "Cancel internal requisitions, with a reason",
+  },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>
 

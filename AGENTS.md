@@ -112,8 +112,8 @@ Report each item as done or not done. A feature isn't finished until all of them
 
 The old system (Express + MongoDB backend, Gatsby client) is at `C:UsersmadhaDocumentsDevelopment-22-10-2026`.
 Features are ported, not copied: analyse the old code, write a plan in `docs/plans/<feature>.md` (shape:
-`docs/plans/invoices.md`), agree the open questions with the owner, then build in this project's patterns. Supply (internal
-requisitions, purchase orders, GRNs) starts from `docs/plans/supply.md`.
+`docs/plans/invoices.md`), agree the open questions with the owner, then build in this project's patterns.
+Procurement (internal requisitions, purchase orders, GRNs) starts from `docs/plans/supply.md`.
 
 ## Modules not built yet (referenced by quotations and invoices)
 

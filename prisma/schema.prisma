@@ -800,8 +800,8 @@ enum InternalRequisitionStatus {
 
 // A request to buy products from one supplier; the first step of IR → purchase order → GRN. It doesn't move stock.
 // The IR date is createdAt and "prepared by" is createdBy, as in the old system (date = today, preparedBy = the user).
-// Hand-written SQL (migration not written yet): next_internal_requisition_number() (GPIR-0001, GPIR-0002, … as in the
-// old system).
+// Hand-written SQL (20261109160000_internal_requisitions): next_internal_requisition_number() (GPIR-0001, GPIR-0002, …
+// as in the old system), CHECKs InternalRequisition_cancel_check and InternalRequisitionItem_quantity_check.
 model InternalRequisition {
   id                        Int                       @id @default(autoincrement())
   internalRequisitionNumber String                    @unique @default(dbgenerated("next_internal_requisition_number()"))
