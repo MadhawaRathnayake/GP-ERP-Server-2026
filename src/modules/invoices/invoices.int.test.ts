@@ -61,6 +61,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  await db.deliveryNote.deleteMany({ where: { invoice: { customerId } } })
   await db.invoiceItem.deleteMany({ where: { invoice: { customerId } } })
   await db.invoice.deleteMany({ where: { customerId } })
   await db.quotationItem.deleteMany({ where: { quotation: { customerId } } })
@@ -115,6 +116,7 @@ describe("invoices", () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().invoiceNumber).toMatch(/^\d{2}[A-Z]{3}_[A-Z0-9]+_\d+$/)
     expect(await stock()).toEqual({ stockInHand: 3, stockInTransit: 2 })
+    expect(res.json().deliveryNote).toMatchObject({ status: "draft", deliveryNoteNumber: expect.stringMatching(/^GPDN-d+$/) })
     const edit = await app.inject({ method: "PATCH", url: `/api/v1/invoices/${id}`, headers: { cookie: user.cookie }, payload: { notes: "x" } })
     expect(edit.json().error.code).toBe("INVOICE_NOT_DRAFT")
   })
@@ -123,6 +125,7 @@ describe("invoices", () => {
     const res = await post(user, `/${id}/cancel`)
     expect(res.statusCode).toBe(200)
     expect(res.json().status).toBe("cancelled")
+    expect(res.json().deliveryNote.status).toBe("cancelled")
     expect(await stock()).toEqual({ stockInHand: 5, stockInTransit: 0 })
     expect((await db.quotation.findUniqueOrThrow({ where: { id: quotationId } })).status).toBe("paymentConfirmed")
   })

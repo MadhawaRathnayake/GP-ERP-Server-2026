@@ -48,7 +48,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: invoiceIdParams, response: { 200: invoice } },
       config: {
         permission: "INVOICES.VIEW",
-        cache: ["Invoice", "InvoiceItem", "Quotation", "QuotationItem", "Customer", "User", "Product"],
+        cache: ["Invoice", "InvoiceItem", "Quotation", "QuotationItem", "Customer", "User", "Product", "DeliveryNote"],
       },
     },
     (req) => getInvoice(req.params.id),
@@ -98,7 +98,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: {
         params: invoiceIdParams,
         response: { 200: invoice },
-        description: "Gives the invoice number and moves the stock in hand to in transit. 409 `INSUFFICIENT_STOCK`.",
+        description:
+          "Gives the invoice number, moves the stock in hand to in transit and, for sales and warranty invoices, makes a " +
+          "draft delivery note. 409 `INSUFFICIENT_STOCK`.",
       },
       config: { permission: "INVOICES.FINALIZE" },
     },
@@ -111,7 +113,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: {
         params: invoiceIdParams,
         response: { 200: invoice },
-        description: "Gives back the stock (finalized only) and the quotation's status before it was invoiced.",
+        description:
+          "Gives back the stock (finalized only) and the quotation's status before it was invoiced, and cancels the " +
+          "delivery note.",
       },
       config: { permission: "INVOICES.CANCEL" },
     },

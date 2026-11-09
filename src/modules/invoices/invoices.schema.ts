@@ -10,6 +10,7 @@ import {
   quotationType,
 } from "#modules/quotations/quotations.schema.js"
 import { fieldsNotAllowed } from "#modules/quotations/quotations.types.js"
+import { deliveryNoteStatus } from "#modules/delivery-notes/delivery-notes.schema.js"
 import { contentProblems, paymentProblems } from "./invoices.rules.js"
 
 const customerId = z.string().regex(/^CUST\d{6,}$/, "Must be a customer id like CUST000001")
@@ -130,6 +131,10 @@ export const invoice = invoiceSummary.extend({
       items: z.array(quotationLine),
     })
     .nullable(),
+  deliveryNote: z
+    .object({ id: z.number().int(), deliveryNoteNumber: z.string(), status: deliveryNoteStatus })
+    .nullable()
+    .describe("Made on finalize (not for service invoices)"),
   creator: party.nullable(),
   finalizer: party.nullable(),
   canceller: party.nullable(),

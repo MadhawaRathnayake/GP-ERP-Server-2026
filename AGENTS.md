@@ -110,7 +110,7 @@ Report each item as done or not done. A feature isn't finished until all of them
 
 ## Modules not built yet (referenced by quotations and invoices)
 
-Repairs (repair received notes), Troubleshoots, Serial numbers and Delivery notes don't exist yet. (Invoices exist:
+Repairs (repair received notes), Troubleshoots and Serial numbers don't exist yet. (Invoices exist:
 `src/modules/invoices/`; `oldInvoiceId` still holds an invoice number from the old system, as free text.) `Quotation` already has
 columns for them: `repairReceiveNoteId` (service), `troubleshootId` (warranty), `oldInvoiceId` and
 `oldSerialNumberId` (service and warranty). Until each module exists, its column is optional free text with **no
@@ -119,9 +119,10 @@ these as real relations, and don't invent tables for them. When you build one of
 that table's id type, add the foreign key (hand-written migration), check the id in `quotations.service.ts`, and give
 the select its options in the client's `pages/Quotations/lines.ts` (`referenceOptions`, used by the quotation and
 invoice forms). `productModel` (warranty) is plain text by design, not a reference. `Invoice` copies the same columns
-from its quotation. Invoices also wait for: serial numbers per line, a delivery note on finalize (a delivered one
+from its quotation. Invoices also wait for: serial numbers per line, delivering a delivery note (a delivered one
 changes how a cancel gives back the stock), and troubleshoot/repair status updates; see the note at the top of
-`invoices.service.ts`.
+`invoices.service.ts`. Delivery notes exist (`src/modules/delivery-notes/`) up to issuing: draft on finalize, item
+verifier, then item issuer; "Delivered", dispatch date, delivery method and the PDF aren't built yet.
 
 ## Known pitfalls
 

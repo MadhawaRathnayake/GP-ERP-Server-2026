@@ -21,10 +21,11 @@ import type { CreateDirectInvoiceBody, CreateInvoiceBody, ListInvoicesQuery, Upd
 // is the quotation's; the lines start as the quotation's and are priced like quotation lines (quotations.amounts.ts),
 // with the current product cost and VAT rate, so the invoice keeps its own prices next to the quotation's. A draft can
 // be edited; finalizing numbers it and moves its stock in hand to in transit; cancelling moves it back (finalized only)
-// and gives the quotation back the status it had. Nothing can be invoiced beyond the stock in hand.
+// and gives the quotation back the status it had. Nothing can be invoiced beyond the stock in hand. Finalizing a sales
+// or warranty invoice also makes its draft delivery note (modules/delivery-notes); cancelling cancels the note.
 //
-// NOT BUILT YET: delivery notes (the old system made one on finalize, and a delivered one changed how a cancel gave
-// the stock back), serial numbers per line, and the troubleshoot/repair status updates. Hook them into
+// NOT BUILT YET: delivering a note (the old system's "Delivered" took the stock out of in transit, and changed how a
+// cancel gave it back), serial numbers per line, and the troubleshoot/repair status updates. Hook them into
 // finalizeInvoice and cancelInvoice when those modules exist.
 
 const summaryInclude = {
@@ -74,6 +75,7 @@ const detailInclude = {
       },
     },
   },
+  deliveryNote: { select: { id: true, deliveryNoteNumber: true, status: true } },
   creator: person,
   finalizer: person,
   canceller: person,
@@ -214,14 +216,17 @@ export async function updateInvoice(id: number, { items, ...data }: UpdateInvoic
   return getInvoice(id)
 }
 
-/** Gives a draft its invoice number and moves its stock from in hand to in transit. */
+/**
+ * Gives a draft its invoice number and moves its stock from in hand to in transit. A sales or warranty invoice also
+ * gets its draft delivery note (a service invoice has nothing to deliver).
+ */
 export async function finalizeInvoice(id: number, actor: Actor) {
   const settings = await getSettings()
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM "Invoice" WHERE id = ${id} FOR UPDATE`
     const invoice = await tx.invoice.findUnique({
       where: { id },
-      select: { status: true, items: { where: { isDeleted: false }, select: { productId: true, quantity: true } } },
+      select: { status: true, type: true, items: { where: { isDeleted: false }, select: { productId: true, quantity: true } } },
     })
     if (!invoice) throw new NotFoundError("Invoice", String(id))
     if (invoice.status !== "draft") throw new InvoiceNotDraftError(id)
@@ -237,13 +242,15 @@ export async function finalizeInvoice(id: number, actor: Actor) {
       where: { id },
       data: { status: "finalized", invoiceNumber, finalizedBy: actor.id, finalizedAt: now, modifiedBy: actor.id, modifiedAt: now },
     })
+    if (invoice.type !== "service") await tx.deliveryNote.create({ data: { invoiceId: id, createdBy: actor.id } })
   })
   return getInvoice(id)
 }
 
 /**
- * Cancels a draft or a finalized invoice. A finalized one's stock goes back from in transit to in hand. The quotation
- * gets back the status it had before it was invoiced, so it can be invoiced again.
+ * Cancels a draft or a finalized invoice. A finalized one's stock goes back from in transit to in hand, and its
+ * delivery note is cancelled. The quotation gets back the status it had before it was invoiced, so it can be invoiced
+ * again.
  */
 export async function cancelInvoice(id: number, actor: Actor) {
   await db.$transaction(async (tx) => {
@@ -267,6 +274,10 @@ export async function cancelInvoice(id: number, actor: Actor) {
       await moveStock(tx, needs, "inTransit", "inHand", invoice.invoiceNumber, "Invoice cancelled", actor)
     }
     const now = new Date()
+    await tx.deliveryNote.updateMany({
+      where: { invoiceId: id, status: { not: "cancelled" } },
+      data: { status: "cancelled", modifiedBy: actor.id, modifiedAt: now },
+    })
     if (invoice.quotationId !== null && invoice.quotationStatusBefore) {
       await tx.quotation.updateMany({
         where: { id: invoice.quotationId, status: "invoiceCreated" },

@@ -63,6 +63,11 @@ export const PERMISSIONS = {
     FINALIZE: "Finalize draft invoices (gives the invoice number and moves the stock)",
     CANCEL: "Cancel invoices (gives back the stock and the quotation)",
   },
+  DELIVERY_NOTES: {
+    VIEW: "View delivery notes",
+    SET_VERIFIER: "Add or change the item verifier of draft delivery notes",
+    SET_ISSUER: "Add the item issuer, which issues the delivery note",
+  },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>
 

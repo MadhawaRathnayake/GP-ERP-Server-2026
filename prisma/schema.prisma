@@ -119,6 +119,10 @@ model User {
   modifiedInvoices       Invoice[]       @relation("InvoiceModifiedBy")
   createdInvoiceItems    InvoiceItem[]   @relation("InvoiceItemCreatedBy")
   modifiedInvoiceItems   InvoiceItem[]   @relation("InvoiceItemModifiedBy")
+  verifiedDeliveryNotes  DeliveryNote[]  @relation("DeliveryNoteItemVerifier")
+  issuedDeliveryNotes    DeliveryNote[]  @relation("DeliveryNoteItemIssuer")
+  createdDeliveryNotes   DeliveryNote[]  @relation("DeliveryNoteCreatedBy")
+  modifiedDeliveryNotes  DeliveryNote[]  @relation("DeliveryNoteModifiedBy")
 
   @@index([roleId])
 }
@@ -610,6 +614,7 @@ model Invoice {
   cancelledBy           String?
   cancelledAt           DateTime?              @db.Timestamptz(3)
   items                 InvoiceItem[]
+  deliveryNote          DeliveryNote?
   creator               User?                  @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy             String?
   createdAt             DateTime               @default(now()) @db.Timestamptz(3)
@@ -655,6 +660,45 @@ model InvoiceItem {
 
   @@index([invoiceId, lineNo])
   @@index([productId])
+}
+
+// ─── Delivery notes ─────────────────────────────────────────────────────────────
+
+// draft (made when a sales or warranty invoice is finalized) → issued (item verifier and item issuer added).
+// Cancelling the invoice cancels its note.
+enum DeliveryNoteStatus {
+  draft
+  issued
+  cancelled
+}
+
+// One per finalized invoice that has product lines (not service invoices); the products and quantities are the
+// invoice's lines, so the note has none of its own. The verifier and the issuer are picked from the ITEM_VERIFIER and
+// ITEM_ISSUER dropdowns (Admin → Dropdowns) and must be two different users.
+// Hand-written SQL (20261109090000_delivery_notes): next_delivery_note_number() (GPDN-1, GPDN-2, … as in the old
+// system), and the CHECKs "DeliveryNote_people_check" and "DeliveryNote_issued_check".
+model DeliveryNote {
+  id                 Int                @id @default(autoincrement())
+  deliveryNoteNumber String             @unique @default(dbgenerated("next_delivery_note_number()"))
+  invoiceId          Int                @unique
+  invoice            Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  status             DeliveryNoteStatus @default(draft)
+  itemVerifierId     String?
+  itemVerifier       User?              @relation("DeliveryNoteItemVerifier", fields: [itemVerifierId], references: [id], onDelete: Restrict)
+  itemIssuerId       String?
+  itemIssuer         User?              @relation("DeliveryNoteItemIssuer", fields: [itemIssuerId], references: [id], onDelete: Restrict)
+  issuedAt           DateTime?          @db.Timestamptz(3) // when the issuer was added
+  creator            User?              @relation("DeliveryNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy          String?
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  modifier           User?              @relation("DeliveryNoteModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy         String?
+  modifiedAt         DateTime?          @db.Timestamptz(3)
+  isDeleted          Boolean            @default(false)
+
+  @@index([status])
+  @@index([itemVerifierId])
+  @@index([itemIssuerId])
 }
 
 // The last invoice number given per kind (draft | final), month (26NOV) and branch (Role.branchCode), so each branch
