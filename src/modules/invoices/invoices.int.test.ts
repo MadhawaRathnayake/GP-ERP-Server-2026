@@ -3,7 +3,7 @@ import type { App } from "#app.js"
 import { db } from "#core/db.js"
 import { cleanupTestUsers, signIn, startApp, type TestUser } from "#test/helpers.js"
 
-// Uses ERP-DB like every integration test, and also uses up this month's invoice numbers (InvoiceNumberCounter).
+// Uses ERP-DB like every integration test, and also uses up this month's invoice numbers (NumberSequence).
 
 let app: App
 let user: TestUser // every invoice permission
@@ -124,7 +124,7 @@ describe("invoices", () => {
   it("cancels: gives back the stock and the quotation's status", async () => {
     const res = await post(user, `/${id}/cancel`)
     expect(res.statusCode).toBe(200)
-    expect(res.json().status).toBe("cancelled")
+    expect(res.json().status).toBe("cancelledAfterFinalized")
     expect(res.json().deliveryNote.status).toBe("cancelled")
     expect(await stock()).toEqual({ stockInHand: 5, stockInTransit: 0 })
     expect((await db.quotation.findUniqueOrThrow({ where: { id: quotationId } })).status).toBe("paymentConfirmed")

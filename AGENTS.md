@@ -108,6 +108,13 @@ Report each item as done or not done. A feature isn't finished until all of them
 - **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isDeleted = true`). The audit columns
   `createdBy/createdAt/modifiedBy/modifiedAt` are set from the actor and never accepted from clients.
 
+## Porting from the old system
+
+The old system (Express + MongoDB backend, Gatsby client) is at `C:UsersmadhaDocumentsDevelopment-22-10-2026`.
+Features are ported, not copied: analyse the old code, write a plan in `docs/plans/<feature>.md` (shape:
+`docs/plans/invoices.md`), agree the open questions with the owner, then build in this project's patterns. Supply (internal
+requisitions, purchase orders, GRNs) starts from `docs/plans/supply.md`.
+
 ## Modules not built yet (referenced by quotations and invoices)
 
 Repairs (repair received notes), Troubleshoots and Serial numbers don't exist yet. (Invoices exist:

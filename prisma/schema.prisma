@@ -22,18 +22,18 @@ datasource db {
 
 // Single-row table (id = 1) holding company-wide business settings. See modules/settings.
 model Setting {
-  id                Int       @id @default(1)
-  currency          String    @db.Char(3) // ISO 4217, e.g. LKR
-  country           String    @db.Char(2) // ISO 3166-1 alpha-2, e.g. LK
-  timezone          String // IANA, e.g. Asia/Colombo
-  vatRate           Decimal   @default(18) @db.Decimal(5, 2) // percent; copied onto each quotation line when the line is saved
-  creator           User?     @relation("SettingCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy         String?
-  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
-  modifier          User?     @relation("SettingModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy        String?
-  modifiedAt        DateTime? @db.Timestamptz(3)
-  isDeleted         Boolean   @default(false)
+  id         Int       @id @default(1)
+  currency   String    @db.Char(3) // ISO 4217, e.g. LKR
+  country    String    @db.Char(2) // ISO 3166-1 alpha-2, e.g. LK
+  timezone   String // IANA, e.g. Asia/Colombo
+  vatRate    Decimal   @default(18) @db.Decimal(5, 2) // percent; copied onto each quotation line when the line is saved
+  creator    User?     @relation("SettingCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  modifier   User?     @relation("SettingModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy String?
+  modifiedAt DateTime? @db.Timestamptz(3)
+  isDeleted  Boolean   @default(false)
 }
 
 // Where a user dropdown takes its users from: the users picked one by one, or every active user with a picked role.
@@ -83,46 +83,55 @@ model User {
   sessions     Session[]
 
   // Rows this user created or last modified (the other side of every table's createdBy/modifiedBy).
-  createdUsers           User[]          @relation("UserCreatedBy")
-  modifiedUsers          User[]          @relation("UserModifiedBy")
-  createdSettings        Setting[]       @relation("SettingCreatedBy")
-  modifiedSettings       Setting[]       @relation("SettingModifiedBy")
-  createdRoles           Role[]          @relation("RoleCreatedBy")
-  modifiedRoles          Role[]          @relation("RoleModifiedBy")
-  createdPermissions     Permission[]    @relation("PermissionCreatedBy")
-  modifiedPermissions    Permission[]    @relation("PermissionModifiedBy")
-  createdCategories      Category[]      @relation("CategoryCreatedBy")
-  modifiedCategories     Category[]      @relation("CategoryModifiedBy")
-  createdProducts        Product[]       @relation("ProductCreatedBy")
-  modifiedProducts       Product[]       @relation("ProductModifiedBy")
-  createdPriceMovements  PriceMovement[] @relation("PriceMovementCreatedBy")
-  modifiedPriceMovements PriceMovement[] @relation("PriceMovementModifiedBy")
-  createdCostMovements   CostMovement[]  @relation("CostMovementCreatedBy")
-  modifiedCostMovements  CostMovement[]  @relation("CostMovementModifiedBy")
-  createdStockMovements  StockMovement[] @relation("StockMovementCreatedBy")
-  modifiedStockMovements StockMovement[] @relation("StockMovementModifiedBy")
-  createdCustomers       Customer[]      @relation("CustomerCreatedBy")
-  modifiedCustomers      Customer[]      @relation("CustomerModifiedBy")
-  createSuppliers        Supplier[]      @relation("SupplierCreatedBy")
-  modifiedSupplier       Supplier[]      @relation("SupplierModifiedBy")
-  salesManagerQuotations Quotation[]     @relation("QuotationSalesManager")
-  createdQuotations      Quotation[]     @relation("QuotationCreatedBy")
-  modifiedQuotations     Quotation[]     @relation("QuotationModifiedBy")
-  createdQuotationItems  QuotationItem[] @relation("QuotationItemCreatedBy")
-  modifiedQuotationItems QuotationItem[] @relation("QuotationItemModifiedBy")
-  createdUserDropdowns   UserDropdown[]  @relation("UserDropdownCreatedBy")
-  modifiedUserDropdowns  UserDropdown[]  @relation("UserDropdownModifiedBy")
-  salesManagerInvoices   Invoice[]       @relation("InvoiceSalesManager")
-  finalizedInvoices      Invoice[]       @relation("InvoiceFinalizedBy")
-  cancelledInvoices      Invoice[]       @relation("InvoiceCancelledBy")
-  createdInvoices        Invoice[]       @relation("InvoiceCreatedBy")
-  modifiedInvoices       Invoice[]       @relation("InvoiceModifiedBy")
-  createdInvoiceItems    InvoiceItem[]   @relation("InvoiceItemCreatedBy")
-  modifiedInvoiceItems   InvoiceItem[]   @relation("InvoiceItemModifiedBy")
-  verifiedDeliveryNotes  DeliveryNote[]  @relation("DeliveryNoteItemVerifier")
-  issuedDeliveryNotes    DeliveryNote[]  @relation("DeliveryNoteItemIssuer")
-  createdDeliveryNotes   DeliveryNote[]  @relation("DeliveryNoteCreatedBy")
-  modifiedDeliveryNotes  DeliveryNote[]  @relation("DeliveryNoteModifiedBy")
+  createdUsers                     User[]                    @relation("UserCreatedBy")
+  modifiedUsers                    User[]                    @relation("UserModifiedBy")
+  createdSettings                  Setting[]                 @relation("SettingCreatedBy")
+  modifiedSettings                 Setting[]                 @relation("SettingModifiedBy")
+  createdRoles                     Role[]                    @relation("RoleCreatedBy")
+  modifiedRoles                    Role[]                    @relation("RoleModifiedBy")
+  createdPermissions               Permission[]              @relation("PermissionCreatedBy")
+  modifiedPermissions              Permission[]              @relation("PermissionModifiedBy")
+  createdCategories                Category[]                @relation("CategoryCreatedBy")
+  modifiedCategories               Category[]                @relation("CategoryModifiedBy")
+  createdProducts                  Product[]                 @relation("ProductCreatedBy")
+  modifiedProducts                 Product[]                 @relation("ProductModifiedBy")
+  createdPriceMovements            PriceMovement[]           @relation("PriceMovementCreatedBy")
+  modifiedPriceMovements           PriceMovement[]           @relation("PriceMovementModifiedBy")
+  createdCostMovements             CostMovement[]            @relation("CostMovementCreatedBy")
+  modifiedCostMovements            CostMovement[]            @relation("CostMovementModifiedBy")
+  createdStockMovements            StockMovement[]           @relation("StockMovementCreatedBy")
+  modifiedStockMovements           StockMovement[]           @relation("StockMovementModifiedBy")
+  createdCustomers                 Customer[]                @relation("CustomerCreatedBy")
+  modifiedCustomers                Customer[]                @relation("CustomerModifiedBy")
+  createSuppliers                  Supplier[]                @relation("SupplierCreatedBy")
+  modifiedSupplier                 Supplier[]                @relation("SupplierModifiedBy")
+  salesManagerQuotations           Quotation[]               @relation("QuotationSalesManager")
+  createdQuotations                Quotation[]               @relation("QuotationCreatedBy")
+  modifiedQuotations               Quotation[]               @relation("QuotationModifiedBy")
+  createdQuotationItems            QuotationItem[]           @relation("QuotationItemCreatedBy")
+  modifiedQuotationItems           QuotationItem[]           @relation("QuotationItemModifiedBy")
+  createdUserDropdowns             UserDropdown[]            @relation("UserDropdownCreatedBy")
+  modifiedUserDropdowns            UserDropdown[]            @relation("UserDropdownModifiedBy")
+  salesManagerInvoices             Invoice[]                 @relation("InvoiceSalesManager")
+  finalizedInvoices                Invoice[]                 @relation("InvoiceFinalizedBy")
+  cancelledInvoices                Invoice[]                 @relation("InvoiceCancelledBy")
+  createdInvoices                  Invoice[]                 @relation("InvoiceCreatedBy")
+  modifiedInvoices                 Invoice[]                 @relation("InvoiceModifiedBy")
+  createdInvoiceItems              InvoiceItem[]             @relation("InvoiceItemCreatedBy")
+  modifiedInvoiceItems             InvoiceItem[]             @relation("InvoiceItemModifiedBy")
+  verifiedDeliveryNotes            DeliveryNote[]            @relation("DeliveryNoteItemVerifier")
+  issuedDeliveryNotes              DeliveryNote[]            @relation("DeliveryNoteItemIssuer")
+  createdDeliveryNotes             DeliveryNote[]            @relation("DeliveryNoteCreatedBy")
+  modifiedDeliveryNotes            DeliveryNote[]            @relation("DeliveryNoteModifiedBy")
+  cancelledInternalRequisitions    InternalRequisition[]     @relation("InternalRequisitionCancelledBy")
+  createdInternalRequisitions      InternalRequisition[]     @relation("InternalRequisitionCreatedBy")
+  modifiedInternalRequisitions     InternalRequisition[]     @relation("InternalRequisitionModifiedBy")
+  createdInternalRequisitionItems  InternalRequisitionItem[] @relation("InternalRequisitionItemCreatedBy")
+  modifiedInternalRequisitionItems InternalRequisitionItem[] @relation("InternalRequisitionItemModifiedBy")
+  createdApprovalRules             ApprovalRule[]            @relation("ApprovalRuleCreatedBy")
+  modifiedApprovalRules            ApprovalRule[]            @relation("ApprovalRuleModifiedBy")
+  createdApprovals                 Approval[]                @relation("ApprovalCreatedBy")
+  modifiedApprovals                Approval[]                @relation("ApprovalModifiedBy")
 
   @@index([roleId])
 }
@@ -217,42 +226,43 @@ enum TrackingType {
 // price, cost and the stock columns are the current values; every change to them is also recorded in PriceMovement,
 // CostMovement or StockMovement (products.service.ts). isDeleted = true means deleted.
 model Product {
-  id              String          @id @default(dbgenerated("next_product_id()"))
-  sku             String          @unique // deleted products keep theirs
-  title           String
-  description     String          @default("N/A")
-  categoryId      String
-  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  manufacturer    String?
-  countryOfOrigin String?
-  imageUrl        String?
-  documentUrl     String?
-  slug            String?
-  warrantyMonths  Int
-  price           Decimal         @default(0) @db.Decimal(14, 2)
-  cost            Decimal         @default(0) @db.Decimal(14, 2)
-  minimumStock    Int             @default(0)
-  stockInHand     Int             @default(0)
-  stockPreOrder   Int             @default(0)
-  stockInTransit  Int             @default(0)
-  stockOnArrival  Int             @default(0)
+  id                       String                    @id @default(dbgenerated("next_product_id()"))
+  sku                      String                    @unique // deleted products keep theirs
+  title                    String
+  description              String                    @default("N/A")
+  categoryId               String
+  category                 Category                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  manufacturer             String?
+  countryOfOrigin          String?
+  imageUrl                 String?
+  documentUrl              String?
+  slug                     String?
+  warrantyMonths           Int
+  price                    Decimal                   @default(0) @db.Decimal(14, 2)
+  cost                     Decimal                   @default(0) @db.Decimal(14, 2)
+  minimumStock             Int                       @default(0)
+  stockInHand              Int                       @default(0)
+  stockPreOrder            Int                       @default(0)
+  stockInTransit           Int                       @default(0)
+  stockOnArrival           Int                       @default(0)
   // Set by the database (Product_set_stock_version) from one counter for all products whenever a stock column
   // changes; never written by the app. Live stock (modules/stock) keeps the value with the higher version.
-  stockVersion    BigInt          @default(0)
-  additionalInfo  String?
-  trackingType    TrackingType
-  priceMovements  PriceMovement[]
-  costMovements   CostMovement[]
-  stockMovements  StockMovement[]
-  quotationItems  QuotationItem[]
-  invoiceItems    InvoiceItem[]
-  creator         User?           @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy       String?
-  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
-  modifier        User?           @relation("ProductModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy      String?
-  modifiedAt      DateTime?       @db.Timestamptz(3)
-  isDeleted       Boolean         @default(false)
+  stockVersion             BigInt                    @default(0)
+  additionalInfo           String?
+  trackingType             TrackingType
+  priceMovements           PriceMovement[]
+  costMovements            CostMovement[]
+  stockMovements           StockMovement[]
+  quotationItems           QuotationItem[]
+  invoiceItems             InvoiceItem[]
+  internalRequisitionItems InternalRequisitionItem[]
+  creator                  User?                     @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy                String?
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  modifier                 User?                     @relation("ProductModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy               String?
+  modifiedAt               DateTime?                 @db.Timestamptz(3)
+  isDeleted                Boolean                   @default(false)
 
   @@index([categoryId])
 }
@@ -386,27 +396,28 @@ model Customer {
 
 // Ids are SUP00001, SUP00002, … (next_supplier_id(), hand-written SQL like next_user_id()).
 model Supplier {
-  id          String    @id @default(dbgenerated("next_supplier_id()"))
-  code        String
-  name        String
-  phones      String[]  @default([])
-  email       String?
-  houseNumber String?
-  street      String?
-  city        String?
-  district    String?
-  province    String?
-  country     String
-  vatNumber   String?
-  tinNumber   String?
-  pvNumber    String?
-  creator     User?     @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy   String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  modifier    User?     @relation("SupplierModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy  String?
-  modifiedAt  DateTime? @db.Timestamptz(3)
-  isDeleted   Boolean   @default(false)
+  id                   String                @id @default(dbgenerated("next_supplier_id()"))
+  code                 String
+  name                 String
+  phones               String[]              @default([])
+  email                String?
+  houseNumber          String?
+  street               String?
+  city                 String?
+  district             String?
+  province             String?
+  country              String
+  vatNumber            String?
+  tinNumber            String?
+  pvNumber             String?
+  internalRequisitions InternalRequisition[]
+  creator              User?                 @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy            String?
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  modifier             User?                 @relation("SupplierModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy           String?
+  modifiedAt           DateTime?             @db.Timestamptz(3)
+  isDeleted            Boolean               @default(false)
 
   @@index([id])
   @@index([name])
@@ -553,12 +564,14 @@ model QuotationItem {
 
 // ─── Invoices ───────────────────────────────────────────────────────────────────
 
-// draft (editable, no stock moved) → finalized (numbered, stock moved inHand → inTransit) → cancelled. A draft can be
-// cancelled too. Cancelling gives the stock back (finalized only) and the quotation its status before the invoice.
+// draft (editable, no stock moved) → finalized (numbered, stock moved inHand → inTransit). Cancelling a draft stores
+// cancelled, a finalized one cancelledAfterFinalized, so the status shows how far it got. Cancelling gives the stock
+// back (finalized only) and the quotation its status before the invoice.
 enum InvoiceStatus {
   draft
   finalized
-  cancelled
+  cancelled // cancelled while draft
+  cancelledAfterFinalized // cancelled while finalized
 }
 
 // How the customer pays. Required on sales and service invoices, optional on warranty ones (checked by the API).
@@ -701,11 +714,11 @@ model DeliveryNote {
   @@index([itemIssuerId])
 }
 
-// The last invoice number given per kind (draft | final), month (26NOV) and branch (Role.branchCode), so each branch
-// counts on its own and numbers restart at 1 every month.
-// Written only by next_invoice_number() (hand-written SQL), never by the app; createdBy/modifiedBy stay NULL.
-model InvoiceNumberCounter {
-  kind       String
+// Document number sequences for every screen: the last value given per sequence code (invoice.draft, invoice.final),
+// period (26NOV, so numbers restart every month) and branch (Role.branchCode); '' when a sequence doesn't use one.
+// Written only by next_sequence_value() (hand-written SQL), never by the app; createdBy/modifiedBy stay NULL.
+model NumberSequence {
+  code       String
   period     String
   branch     String
   value      Int
@@ -715,5 +728,119 @@ model InvoiceNumberCounter {
   modifiedAt DateTime? @db.Timestamptz(3)
   isDeleted  Boolean   @default(false)
 
-  @@id([kind, period, branch])
+  @@id([code, period, branch])
+}
+
+// ─── Approvals ──────────────────────────────────────────────────────────────────
+// Shared by every screen whose documents can need approval (modules/approvals). The screens are listed in code
+// (APPROVAL_SCREENS in modules/approvals/approvals.ts); each keeps its own status (pending → approved | rejected) and
+// calls the approvals service from its own approve and reject routes, which need <SCREEN>.APPROVE / <SCREEN>.REJECT.
+
+// Whether a screen's documents need approval (Admin → Approvals). A row is written the first time an admin saves one;
+// until then approval is required. When it isn't, a document is approved on save (an automatic Approval row).
+model ApprovalRule {
+  id         String    @id // the screen code, e.g. INTERNAL_REQUISITIONS
+  isRequired Boolean   @default(true)
+  creator    User?     @relation("ApprovalRuleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  modifier   User?     @relation("ApprovalRuleModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy String?
+  modifiedAt DateTime? @db.Timestamptz(3)
+  isDeleted  Boolean   @default(false)
+}
+
+enum ApprovalDecision {
+  approved
+  rejected
+}
+
+// Every approve or reject decision on any document, appended and never edited, so a document rejected, resubmitted and
+// approved keeps both decisions. createdBy is who decided (the user who saved it, when automatic). documentId is the
+// document's id in its screen's table; there's no foreign key, since that table differs per screen.
+model Approval {
+  id          Int              @id @default(autoincrement())
+  screen      String // the screen code, e.g. INTERNAL_REQUISITIONS
+  documentId  Int
+  decision    ApprovalDecision
+  isAutomatic Boolean          @default(false) // approved on save because the screen didn't need approval then
+  reason      String? // required when rejecting
+  creator     User?            @relation("ApprovalCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy   String?
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  modifier    User?            @relation("ApprovalModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy  String?
+  modifiedAt  DateTime?        @db.Timestamptz(3)
+  isDeleted   Boolean          @default(false)
+
+  @@index([screen, documentId])
+}
+
+// ─── Procurement ────────────────────────────────────────────────────────────────
+
+// pending (editable; waiting for approval) → approved | rejected. A rejected IR can be edited and resubmitted
+// (→ pending). Cancelling a pending IR stores cancelled, an approved one cancelledAfterApproved, so the status shows
+// how far it got. Who approved or rejected, when and why: Approval rows (screen INTERNAL_REQUISITIONS). Purchase
+// orders and GRNs have their own statuses.
+enum InternalRequisitionStatus {
+  pending
+  approved
+  rejected
+  cancelled // cancelled while pending
+  cancelledAfterApproved // cancelled while approved
+}
+
+// A request to buy products from one supplier; the first step of IR → purchase order → GRN. It doesn't move stock.
+// The IR date is createdAt and "prepared by" is createdBy, as in the old system (date = today, preparedBy = the user).
+// Hand-written SQL (migration not written yet): next_internal_requisition_number() (GPIR-0001, GPIR-0002, … as in the
+// old system).
+model InternalRequisition {
+  id                        Int                       @id @default(autoincrement())
+  internalRequisitionNumber String                    @unique @default(dbgenerated("next_internal_requisition_number()"))
+  supplierId                String
+  supplier                  Supplier                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  status                    InternalRequisitionStatus @default(pending)
+  isInternational           Boolean                   @default(false) // no purchase order: the GRN is made from the IR
+  eta                       DateTime?                 @db.Date // expected arrival; can be changed while pending
+  cancelReason              String?
+  canceller                 User?                     @relation("InternalRequisitionCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  cancelledBy               String?
+  cancelledAt               DateTime?                 @db.Timestamptz(3)
+  items                     InternalRequisitionItem[]
+  creator                   User?                     @relation("InternalRequisitionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy                 String?
+  createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
+  modifier                  User?                     @relation("InternalRequisitionModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy                String?
+  modifiedAt                DateTime?                 @db.Timestamptz(3)
+  isDeleted                 Boolean                   @default(false)
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// One product line of an internal requisition. stockInHand and minimumStock are copied from the product when the line
+// is saved, so the IR still shows what the requester saw (the old "Available Qty" and "MOQ"). Saving new lines
+// soft-deletes the old ones, as on InvoiceItem.
+model InternalRequisitionItem {
+  id                    Int                 @id @default(autoincrement())
+  internalRequisitionId Int
+  internalRequisition   InternalRequisition @relation(fields: [internalRequisitionId], references: [id], onDelete: Restrict)
+  lineNo                Int // display order, 1, 2, 3, …
+  productId             String
+  product               Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity              Int // the order quantity, whole units, at least 1
+  stockInHand           Int // Product.stockInHand at the time
+  minimumStock          Int // Product.minimumStock at the time
+  creator               User?               @relation("InternalRequisitionItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy             String?
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  modifier              User?               @relation("InternalRequisitionItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy            String?
+  modifiedAt            DateTime?           @db.Timestamptz(3)
+  isDeleted             Boolean             @default(false)
+
+  @@index([internalRequisitionId, lineNo])
+  @@index([productId])
 }

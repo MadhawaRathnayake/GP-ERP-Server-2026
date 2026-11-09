@@ -18,6 +18,10 @@ export const PERMISSIONS = {
     VIEW: "See which users each dropdown offers (admin screen)",
     EDIT: "Choose which users each dropdown offers, e.g. sales managers",
   },
+  APPROVALS: {
+    VIEW: "See which screens need approval (admin screen)",
+    EDIT: "Turn approval on or off per screen",
+  },
   DASHBOARD: { VIEW: "Open the dashboard" },
   PRODUCTS: {
     VIEW: "View products",

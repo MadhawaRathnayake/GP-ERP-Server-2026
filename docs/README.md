@@ -11,7 +11,7 @@ changing that area.
 | [logging.md](logging.md) | Where logs go (the terminal only) and how to see more or fewer |
 | [known-issues.md](known-issues.md) | Open problems found in the code, with the fix for each |
 | [screens/](screens/) | Build plans for each screen, backend and frontend (start with [customers.md](screens/customers.md)) |
-| [plans/](plans/) | Larger features ported from the old system ([invoices.md](plans/invoices.md)): what was built and what's left |
+| [plans/](plans/) | Larger features ported from the old system: [invoices.md](plans/invoices.md) (built; the example to follow), [supply.md](plans/supply.md) (next: requisitions, purchase orders, GRNs) |
 
 Other docs in the repo root: `README.md` (how the API works), `ARCHITECTURE.md` (layers and rules),
 `ADDING-A-FEATURE.md` (the general walkthrough for a new feature), `AGENTS.md` (rules for AI agents).

@@ -64,7 +64,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -123,6 +123,8 @@ describe("app wiring", () => {
     ["POST", `/api/v1/delivery-notes/${aDeliveryNoteId}/issuer`, "DELIVERY_NOTES.SET_ISSUER"],
     ["GET", "/api/v1/dropdowns", "DROPDOWNS.VIEW"],
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],
+    ["GET", "/api/v1/approvals/rules", "APPROVALS.VIEW"],
+    ["PATCH", "/api/v1/approvals/rules/INTERNAL_REQUISITIONS", "APPROVALS.EDIT"],
     ["GET", "/api/v1/users", "ADMIN.VIEW"],
     ["GET", `/api/v1/users/${aUserId}`, "ADMIN.VIEW"],
     ["POST", "/api/v1/users", "ADMIN.MANAGE_USERS"],

@@ -1,4 +1,10 @@
-import { Prisma, type InvoicePaymentMethod, type QuotationType, type StockBucket } from "#generated/prisma/client.js"
+import {
+  Prisma,
+  type InvoicePaymentMethod,
+  type InvoiceStatus,
+  type QuotationType,
+  type StockBucket,
+} from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
 import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
@@ -115,7 +121,7 @@ export async function createInvoice({ quotationId, items, ...data }: CreateInvoi
     await tx.$executeRaw`SELECT 1 FROM "Quotation" WHERE id = ${quotationId} FOR UPDATE`
     const quotation = await tx.quotation.findUnique({ where: { id: quotationId } })
     if (!quotation || quotation.isDeleted) throw new NotFoundError("Quotation", String(quotationId))
-    const live = await tx.invoice.findFirst({ where: { quotationId, status: { not: "cancelled" } }, select: { id: true } })
+    const live = await tx.invoice.findFirst({ where: { quotationId, status: { notIn: cancelledStatuses } }, select: { id: true } })
     if (live || quotation.status === "invoiceCreated") throw new InvoiceExistsError(quotationId)
     if (quotation.status !== "paymentConfirmed" && quotation.status !== "creditConfirmed") {
       throw new QuotationNotConfirmedError(quotationId)
@@ -247,9 +253,12 @@ export async function finalizeInvoice(id: number, actor: Actor) {
   return getInvoice(id)
 }
 
+// A draft that's cancelled becomes cancelled, a finalized one cancelledAfterFinalized.
+const cancelledStatuses: InvoiceStatus[] = ["cancelled", "cancelledAfterFinalized"]
+
 /**
- * Cancels a draft or a finalized invoice. A finalized one's stock goes back from in transit to in hand, and its
- * delivery note is cancelled. The quotation gets back the status it had before it was invoiced, so it can be invoiced
+ * Cancels a draft (→ cancelled) or a finalized invoice (→ cancelledAfterFinalized). A finalized one's stock goes back
+ * from in transit to in hand, and its delivery note is cancelled. The quotation gets back the status it had before it was invoiced, so it can be invoiced
  * again.
  */
 export async function cancelInvoice(id: number, actor: Actor) {
@@ -266,7 +275,7 @@ export async function cancelInvoice(id: number, actor: Actor) {
       },
     })
     if (!invoice) throw new NotFoundError("Invoice", String(id))
-    if (invoice.status === "cancelled") throw new InvoiceCancelledError(id)
+    if (cancelledStatuses.includes(invoice.status)) throw new InvoiceCancelledError(id)
 
     if (invoice.status === "finalized") {
       const needs = quantitiesByProduct(invoice.items)
@@ -286,7 +295,13 @@ export async function cancelInvoice(id: number, actor: Actor) {
     }
     await tx.invoice.update({
       where: { id },
-      data: { status: "cancelled", cancelledBy: actor.id, cancelledAt: now, modifiedBy: actor.id, modifiedAt: now },
+      data: {
+        status: invoice.status === "finalized" ? "cancelledAfterFinalized" : "cancelled",
+        cancelledBy: actor.id,
+        cancelledAt: now,
+        modifiedBy: actor.id,
+        modifiedAt: now,
+      },
     })
   })
   return getInvoice(id)

@@ -60,6 +60,8 @@ zod removes every key a request schema doesn't list. The create and update schem
 | Session | SHA-256 of the cookie id | the app | |
 | Setting | always `1` | | |
 | UserDropdown | the dropdown's code, e.g. `SALES_MANAGER` | `USER_DROPDOWNS` in `modules/dropdowns/dropdowns.ts` | `SALES_MANAGER` |
+| ApprovalRule | the screen's code, e.g. `INTERNAL_REQUISITIONS` | `APPROVAL_SCREENS` in `modules/approvals/approvals.ts` | `INTERNAL_REQUISITIONS` |
+| Approval | integer | `autoincrement()` | `1` |
 | RolePermission | `roleId` + `permissionId` together | | |
 
 - The generators are SQL functions written by hand in a migration, each with its own sequence (`<table>_number_seq`).

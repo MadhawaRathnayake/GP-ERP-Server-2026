@@ -21,8 +21,8 @@ const intId = z.coerce.number().int().positive().max(2147483647)
 export const invoiceIdParams = z.object({ id: intId })
 
 export const invoiceStatus = z
-  .enum(["draft", "finalized", "cancelled"])
-  .describe("draft → finalized (numbered, stock moved) → cancelled. A draft can be cancelled too")
+  .enum(["draft", "finalized", "cancelled", "cancelledAfterFinalized"])
+  .describe("draft → finalized (numbered, stock moved). Cancelling a draft → cancelled, a finalized one → cancelledAfterFinalized")
 
 export const paymentMethod = z.enum(["cash", "credit", "cheque", "bankTransfer"])
 

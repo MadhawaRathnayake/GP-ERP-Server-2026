@@ -59,6 +59,19 @@ Then, on every server instance:
   within 25 s. A failing check (database down) also ends it; the browser reconnects through the normal access check.
 - On shutdown (`preClose`) every stream is ended, so the server doesn't wait for them.
 
+## Document numbers
+
+Numbers that restart every month or count per branch come from the `NumberSequence` table (migration
+`20261109120000_number_sequence`); numbers that never restart use a Postgres sequence instead (`quotation_number_seq`).
+
+- `next_sequence_value(code, period, branch)` returns the next value of one sequence, starting at 1. `code` names it
+  (`invoice.draft`, `invoice.final`); `period` (`26NOV`) and `branch` (`Role.branchCode`) give each month and branch
+  its own count, `''` when a sequence doesn't use one. A new month or branch gets its row on first use: no cron job.
+- The upsert locks the row until the transaction commits, so two documents never get the same number; call it in the
+  transaction that saves the document, and a rollback gives the value back.
+- Each screen wraps it in a function that builds its format, e.g. `next_invoice_number()` → `26NOV_GP01_14`.
+- Never lower a value or delete a row: the next number would be one an existing document already has.
+
 ## Sessions
 
 - Signing in sets an httpOnly cookie (`SESSION_COOKIE_NAME`, default `sid`) holding a random id. The database stores
