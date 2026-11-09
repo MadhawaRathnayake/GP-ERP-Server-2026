@@ -13,7 +13,7 @@ let original: Settings
 beforeAll(async () => {
   app = await startApp()
   viewer = (await signIn(app, [])).cookie
-  adminUser = await signIn(app, ["ADMIN.EDIT_SETTINGS"])
+  adminUser = await signIn(app, ["SETTINGS.EDIT"])
   admin = adminUser.cookie
   original = await getSettings()
 })
@@ -32,7 +32,7 @@ describe("settings", () => {
     expect(Math.abs(Date.parse(res.json().serverTime) - Date.now())).toBeLessThan(5000)
   })
 
-  it("requires ADMIN.EDIT_SETTINGS to update", async () => {
+  it("requires SETTINGS.EDIT to update", async () => {
     const res = await app.inject({ method: "PATCH", url: "/api/v1/settings", headers: { cookie: viewer }, payload: { currency: "USD" } })
     expect(res.statusCode).toBe(403)
   })

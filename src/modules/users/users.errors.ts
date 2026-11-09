@@ -1,15 +1,15 @@
 import { AppError } from "#http/errors.js"
 
-/** An admin tried to take away their own ability to manage users, which could leave nobody able to. */
-export class SelfLockoutError extends AppError {
-  constructor(message = "You can't remove your own user-management permission or deactivate yourself") {
-    super(409, "SELF_LOCKOUT", message)
+/** A user tried to change their own role or status (deactivate or restore themselves). */
+export class OwnAccountError extends AppError {
+  constructor() {
+    super(403, "OWN_ACCOUNT", "You can change your own name, email and password, but not your own role or status")
   }
 }
 
-/** The change would leave no active user with the system role (Super Admin), so nobody could manage the app. */
-export class LastSuperAdminError extends AppError {
+/** Someone other than the Super Admin tried to change the Super Admin's account. */
+export class SuperAdminUserError extends AppError {
   constructor() {
-    super(409, "LAST_SUPER_ADMIN", "At least one active user must keep the Super Admin role")
+    super(403, "SUPER_ADMIN_USER", "Only the Super Admin can change the Super Admin's account")
   }
 }

@@ -13,7 +13,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: { body: updateSettingsBody, response: { 200: settingsResponse } },
-      config: { permission: "ADMIN.EDIT_SETTINGS" },
+      config: { permission: "SETTINGS.EDIT" },
     },
     async (req) => withServerTime(await updateSettings(req.body, actorOf(req))),
   )

@@ -162,13 +162,16 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 
 **Where a user's permissions come from:** every user has exactly one role (`User.roleId` is required), and the role's permissions are the user's permissions. To change what one user can do, move them to another role. A role that still has users can't be deleted.
 
-**The system role (Super Admin, `Role.isSystem = true`):** it has every permission, worked out in code by `roleKeys()` in `security/permission-table.ts`, whatever its grant rows say, so it also gets permissions added later. Its name and permissions can't be changed (`409 SYSTEM_ROLE`; the description can), and the last active user with it can't be deleted or moved to another role (`409 LAST_SUPER_ADMIN`). If everyone is locked out anyway, `npm run admin:restore -- <email>` on the server gives that user Super Admin again.
+**The system role (Super Admin, `Role.isSystem = true`):** there is one (`Role_one_system_key`), at the top of the role hierarchy. It has every permission, worked out in code by `roleKeys()` in `security/permission-table.ts`, whatever its grant rows say, so it also gets permissions added later. Nobody can change it or give it to a user (`409 SYSTEM_ROLE`), and only the Super Admin can change the Super Admin's own account (name, email, password; `403 SUPER_ADMIN_USER`). If the Super Admin is locked out, `npm run admin:restore -- <email>` on the server gives that user Super Admin again.
+
+**The role hierarchy** (`src/modules/roles/roles.access.ts`): every other role has a managing role (`Role.parentRoleId`). An admin manages the roles below their own role, at any depth, and the users in them: create roles under their own role or below it, edit those roles, and create, edit and deactivate their users (`403 OUTSIDE_BRANCH` otherwise). They never manage their own role, a role above or beside it, or the Super Admin. Everyone with `ROLES.VIEW` / `USERS.VIEW` sees every role and user; responses carry `canManage` for the signed-in user. An admin can give or take away only permissions their own role has, and never the Super-Admin-only groups `SETTINGS`, `DROPDOWNS` and `APPROVALS` (`SUPER_ADMIN_ONLY_SCREENS` in `permissions.ts`; `403 NOT_GRANTABLE`). Taking a permission from a role leaves the roles below it as they are. Only the Super Admin moves a role under another one (`parentRoleId`; `403 PARENT_CHANGE`). Roles directly under Super Admin with no admin of their own are managed by the Super Admin only.
 
 **Keeping the table in sync:** `src/platform/security/permissions.ts` is the source of truth. At boot, `security/permissions-sync.plugin.ts` creates any missing `Permission` rows and refreshes descriptions. Rows for codes that were removed from the file are logged as a warning and grant nothing.
 
 **Frontend:**
 - `GET /api/v1/auth/me` returns `permissions: ["PRODUCTS.VIEW", …]`. Show a screen when the user has `<SCREEN>.VIEW`, and a button when they have the matching code.
-- `GET /api/v1/permissions` lists every code with its description, for the role editor's checkboxes.
+- `GET /api/v1/auth/me` also returns `isSuperAdmin`.
+- `GET /api/v1/permissions` lists every code with its description and `superAdminOnly`, for the role editor's checkboxes.
 
 **Sessions** (`platform/security/sessions.ts`):
 - `POST /api/v1/auth/login { email, password }` sets an `httpOnly` cookie holding a random 256-bit session id.
@@ -180,9 +183,9 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 **Each request:**
 - The auth hook loads the user and their role's permissions through `getCurrentUser()` (`platform/security/current-user.ts`). The result is cached in Redis against `User`, `Role`, `Permission` and `RolePermission`.
 - Because of that, admin changes apply on the user's next request without them signing in again: a new role, changed grants, or deactivation (which ends the session).
-- In handlers, `req.user` is `{ id, name, email, roleId, roleName, permissions }`, and `actorOf(req)` gives `{ id, sessionId }` for audit fields.
+- In handlers, `req.user` is `{ id, name, email, roleId, roleName, isSuperAdmin, permissions }`, and `actorOf(req)` gives `{ id, sessionId }` for audit fields (`managerOf(req)` adds the role, for the users and roles rules).
 
-**Users** (`/api/v1/users`): viewing needs `ADMIN.VIEW`; changes need `ADMIN.MANAGE_USERS`.
+**Users** (`/api/v1/users`): viewing needs `USERS.VIEW`, creating `USERS.CREATE`, editing and deactivating `USERS.EDIT`, each limited to the users in the caller's branch (see the role hierarchy above).
 - **Role:** `roleId` is required when creating a user. Responses include `roleName`.
 - **Ids** are `USER00001`, `USER00002`, … from the `next_user_id()` database function. They widen past `USER99999` rather than truncating. A rolled-back insert leaves a gap.
 - **Audit columns:**
@@ -202,10 +205,9 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
   - `PATCH { isDeleted: false }` restores a user.
   - A deleted user's email stays taken.
 - **Passwords:** `PATCH /api/v1/users/:id` with `password` replaces it and signs the user out everywhere else. An admin changing their own password stays signed in.
-- **No self-lockout:** admins can't deactivate themselves, move themselves to a role without `ADMIN.MANAGE_USERS`, or remove it from their own role (`409 SELF_LOCKOUT`).
-- **Always a Super Admin:** nobody can deactivate the last active Super Admin user or move them to another role (`409 LAST_SUPER_ADMIN`).
+- **Own account:** every user with `USERS.EDIT` can change their own name, email and password, but not their own role or status (`403 OWN_ACCOUNT`), so nobody can promote, lock out or deactivate themselves.
 
-**Roles** (`/api/v1/roles`): viewing needs `ADMIN.VIEW`; changes need `ADMIN.MANAGE_ROLES`. Responses include `isSystem`; the system role's name and permissions can't be changed (`409 SYSTEM_ROLE`).
+**Roles** (`/api/v1/roles`): viewing needs `ROLES.VIEW`, creating `ROLES.CREATE`, editing `ROLES.EDIT`, limited by the role hierarchy above. Responses include `isSystem`, `parentRoleId` and `canManage`.
 
 **Secrets:** passwords are hashed with scrypt (`platform/security/password.ts`). `passwordHash` is never loaded unless a query asks for it: `omit` in `platform/core/db.ts`.
 
@@ -241,7 +243,7 @@ Authorization uses **permission codes**: a screen code plus a permission code, w
 ## Business settings
 
 - A single `Setting` row holds currency, country, timezone and the VAT rate (`vatRate`, a percent), created from `DEFAULT_*` on first use. The VAT rate is copied onto each quotation line when the line is saved.
-- `GET /api/v1/settings` (any signed-in user) returns the settings plus `serverTime` in UTC. `PATCH /api/v1/settings` needs `ADMIN.EDIT_SETTINGS`, and values are validated: ISO currency, ISO country, IANA timezone, VAT rate 0–100 with at most 2 decimals.
+- `GET /api/v1/settings` (any signed-in user) returns the settings plus `serverTime` in UTC. `PATCH /api/v1/settings` needs `SETTINGS.EDIT` (the admin screen shows them with `SETTINGS.VIEW`), and values are validated: ISO currency, ISO country, IANA timezone, VAT rate 0–100 with at most 2 decimals.
 - In code: `const { currency, timezone } = await getSettings()`.
 
 ## User dropdowns

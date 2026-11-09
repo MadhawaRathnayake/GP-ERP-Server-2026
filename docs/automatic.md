@@ -16,9 +16,9 @@ Things that run without anyone calling them. If something "just works", it's pro
 ### Permissions
 
 - A new permission reaches **Super Admin** at once: it's the system role (`Role.isSystem`), which has every permission
-  in code, whatever its grant rows say. Every other role gets it only when an admin ticks it in Admin → Roles.
-- The system role can't be renamed or have its permissions changed (409 `SYSTEM_ROLE`), and the last active user with
-  it can't be deleted or moved to another role (409 `LAST_SUPER_ADMIN`).
+  in code, whatever its grant rows say. Every other role gets it only when an admin ticks it in Admin → Roles (an
+  admin can tick only what their own role has, and only the Super Admin ticks Settings, Dropdowns and Approvals).
+- Nobody can change the system role or give it to a user (409 `SYSTEM_ROLE`).
 - If everyone is locked out anyway, someone with server access runs `npm run admin:restore -- <email>`: it gives that
   user Super Admin and reactivates them. There's no API for it.
 - A permission removed from `permissions.ts` stays in the table; it grants nothing and is logged as a warning at

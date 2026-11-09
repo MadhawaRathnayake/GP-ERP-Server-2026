@@ -1,43 +1,44 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
-import { actorOf } from "#security/auth.plugin.js"
+import { managerOf } from "./roles.access.js"
 import { createRoleBody, role, roleIdParams, roleList, updateRoleBody } from "./roles.schema.js"
 import { createRole, getRole, listRoles, updateRole } from "./roles.service.js"
 
+// Every role can be seen with ROLES.VIEW; creating and editing are limited to the caller's branch (roles.access.ts).
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     "/",
     {
       schema: { response: { 200: roleList } },
-      config: { permission: "ADMIN.VIEW" },
+      config: { permission: "ROLES.VIEW" },
     },
-    () => listRoles(),
+    (req) => listRoles(managerOf(req)),
   )
 
   app.get(
     "/:id",
     {
       schema: { params: roleIdParams, response: { 200: role } },
-      config: { permission: "ADMIN.VIEW" },
+      config: { permission: "ROLES.VIEW" },
     },
-    (req) => getRole(req.params.id),
+    (req) => getRole(req.params.id, managerOf(req)),
   )
 
   app.post(
     "/",
     {
       schema: { body: createRoleBody, response: { 201: role } },
-      config: { permission: "ADMIN.MANAGE_ROLES" },
+      config: { permission: "ROLES.CREATE" },
     },
-    async (req, reply) => reply.status(201).send(await createRole(req.body, actorOf(req))),
+    async (req, reply) => reply.status(201).send(await createRole(req.body, managerOf(req))),
   )
 
   app.patch(
     "/:id",
     {
       schema: { params: roleIdParams, body: updateRoleBody, response: { 200: role } },
-      config: { permission: "ADMIN.MANAGE_ROLES" },
+      config: { permission: "ROLES.EDIT" },
     },
-    (req) => updateRole(req.params.id, req.body, req.user),
+    (req) => updateRole(req.params.id, req.body, managerOf(req)),
   )
 }
 

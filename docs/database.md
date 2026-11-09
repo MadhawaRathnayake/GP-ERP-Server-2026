@@ -34,6 +34,7 @@ The row Prisma returns from `create` already contains them, so the API response 
 | `Customer.lastInvoiceDate` | invoices (not built yet) | `NULL` until the first invoice |
 | `Customer.totalInvoices` | invoices (not built yet) | `0` until the first invoice |
 | `Role.isSystem` | migration `20261103150000_system_role` and the seed | `true` only on Super Admin ([automatic.md](automatic.md#permissions)) |
+| `Role.parentRoleId` | migration `20261109150000_role_hierarchy` for existing roles; then the role's creator | the managing role; `NULL` only on Super Admin |
 
 None of them is in a request schema, so clients can't send them. The app only shows them.
 
@@ -84,7 +85,7 @@ zod removes every key a request schema doesn't list. The create and update schem
 
 - **Audit columns last**, in this order: `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`, `isDeleted`. Only
   `Session` and `RolePermission` go without them. `test/schema.test.ts` fails otherwise. It checks `schema.prisma`, not
-  the database: in the database, `Role.isSystem` and `Role.branchCode` sit after them because they were added to a table with data.
+  the database: in the database, `Role.isSystem`, `Role.branchCode` and `Role.parentRoleId` sit after them because they were added to a table with data.
 - **Time:** `@db.Timestamptz(3)`, stored in UTC. The frontend shows it in the company timezone (`Setting.timezone`).
 - **Money:** `Decimal @db.Decimal(14, 2)`, sent as a JSON number through `money` from `#http/fields.js`.
 - **`passwordHash` is never loaded** unless a query asks for it (`omit: { passwordHash: false }`), set globally in

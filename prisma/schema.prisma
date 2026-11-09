@@ -150,23 +150,31 @@ model Session {
 }
 
 // Ids are ROLE0001, ROLE0002, … (next_role_id(), hand-written SQL like next_user_id()).
-// isSystem = Super Admin: it has every permission in code (its grant rows are ignored), its name and permissions can't
-// be changed, and at least one active user always keeps it (roles.service.ts, users.service.ts).
+// isSystem = Super Admin, the one role at the top: it has every permission in code (its grant rows are ignored), can't
+// be changed, and no user can be given it (roles.service.ts, users.service.ts). Every other role has a managing role
+// (parentRoleId), whose admins manage it and the roles below it (modules/roles/roles.access.ts).
+// Hand-written SQL (20261109150000_role_hierarchy): CHECK "Role_parent_check" (only the system role has no parent) and
+// the partial unique index "Role_one_system_key" (one system role).
 model Role {
-  id          String           @id @default(dbgenerated("next_role_id()"))
-  name        String           @unique
-  description String           @default("")
-  isSystem    Boolean          @default(false)
-  branchCode  String           @default("GP01") // the middle part of the invoice numbers its users make, 26NOV_GP01_14
-  permissions RolePermission[]
-  users       User[]           @relation("UserRole")
-  creator     User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy   String?
-  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
-  modifier    User?            @relation("RoleModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy  String?
-  modifiedAt  DateTime?        @db.Timestamptz(3)
-  isDeleted   Boolean          @default(false)
+  id           String           @id @default(dbgenerated("next_role_id()"))
+  name         String           @unique
+  description  String           @default("")
+  isSystem     Boolean          @default(false)
+  branchCode   String           @default("GP01") // the middle part of the invoice numbers its users make, 26NOV_GP01_14
+  parentRoleId String?
+  parent       Role?            @relation("RoleParent", fields: [parentRoleId], references: [id], onDelete: Restrict)
+  children     Role[]           @relation("RoleParent")
+  permissions  RolePermission[]
+  users        User[]           @relation("UserRole")
+  creator      User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy    String?
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  modifier     User?            @relation("RoleModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy   String?
+  modifiedAt   DateTime?        @db.Timestamptz(3)
+  isDeleted    Boolean          @default(false)
+
+  @@index([parentRoleId])
 }
 
 // One row per (screen, permission) pair, e.g. PRODUCTS / CREATE. Rows are created from platform/security/permissions.ts at boot.

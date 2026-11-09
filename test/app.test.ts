@@ -15,6 +15,7 @@ const { SESSION_ID, user } = vi.hoisted(() => ({
     email: "t@test.local",
     roleId: "ROLE0001",
     roleName: "No access",
+    isSuperAdmin: false,
     permissions: [],
   } as CurrentUser,
 }))
@@ -125,17 +126,17 @@ describe("app wiring", () => {
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],
     ["GET", "/api/v1/approvals/rules", "APPROVALS.VIEW"],
     ["PATCH", "/api/v1/approvals/rules/INTERNAL_REQUISITIONS", "APPROVALS.EDIT"],
-    ["GET", "/api/v1/users", "ADMIN.VIEW"],
-    ["GET", `/api/v1/users/${aUserId}`, "ADMIN.VIEW"],
-    ["POST", "/api/v1/users", "ADMIN.MANAGE_USERS"],
-    ["PATCH", `/api/v1/users/${aUserId}`, "ADMIN.MANAGE_USERS"],
-    ["DELETE", `/api/v1/users/${aUserId}`, "ADMIN.MANAGE_USERS"],
-    ["GET", "/api/v1/roles", "ADMIN.VIEW"],
-    ["GET", `/api/v1/roles/${aRoleId}`, "ADMIN.VIEW"],
-    ["POST", "/api/v1/roles", "ADMIN.MANAGE_ROLES"],
-    ["PATCH", `/api/v1/roles/${aRoleId}`, "ADMIN.MANAGE_ROLES"],
-    ["GET", "/api/v1/permissions", "ADMIN.VIEW"],
-    ["PATCH", "/api/v1/settings", "ADMIN.EDIT_SETTINGS"],
+    ["GET", "/api/v1/users", "USERS.VIEW"],
+    ["GET", `/api/v1/users/${aUserId}`, "USERS.VIEW"],
+    ["POST", "/api/v1/users", "USERS.CREATE"],
+    ["PATCH", `/api/v1/users/${aUserId}`, "USERS.EDIT"],
+    ["DELETE", `/api/v1/users/${aUserId}`, "USERS.EDIT"],
+    ["GET", "/api/v1/roles", "ROLES.VIEW"],
+    ["GET", `/api/v1/roles/${aRoleId}`, "ROLES.VIEW"],
+    ["POST", "/api/v1/roles", "ROLES.CREATE"],
+    ["PATCH", `/api/v1/roles/${aRoleId}`, "ROLES.EDIT"],
+    ["GET", "/api/v1/permissions", "ROLES.VIEW"],
+    ["PATCH", "/api/v1/settings", "SETTINGS.EDIT"],
   ] as const)("%s %s requires %s", async (method, url, permission) => {
     const res = await app.inject({ method, url, headers: signedIn, payload: method === "GET" || method === "DELETE" ? undefined : {} })
     expect(res.statusCode).toBe(403)
@@ -179,7 +180,7 @@ describe("app wiring", () => {
     const createUser = spec.paths["/api/v1/users/"].post
     expect(createUser.tags).toEqual(["users"])
     expect(createUser.security).toEqual([{ session: [] }])
-    expect(createUser.description).toContain("`ADMIN.MANAGE_USERS`")
+    expect(createUser.description).toContain("`USERS.CREATE`")
 
     const userSchema = createUser.responses["201"].content["application/json"].schema
     expect(Object.keys(userSchema.properties)).toEqual(expect.arrayContaining(["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isDeleted"]))

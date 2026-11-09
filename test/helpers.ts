@@ -26,10 +26,22 @@ export async function startApp(): Promise<App> {
   return app
 }
 
-/** Creates a role for tests (cleaned up by cleanupTestUsers). */
-export async function createTestRole(permissions: PermissionKey[]) {
+/** The id of the system role (Super Admin), which `npm run db:seed` creates. */
+export async function systemRoleId() {
+  return (await db.role.findFirstOrThrow({ where: { isSystem: true }, select: { id: true } })).id
+}
+
+/**
+ * Creates a role for tests (cleaned up by cleanupTestUsers), managed by `parentRoleId` (default: directly under Super
+ * Admin, so only the Super Admin manages it).
+ */
+export async function createTestRole(permissions: PermissionKey[], parentRoleId?: string) {
   return db.role.create({
-    data: { name: `${TEST_PREFIX}${randomUUID().slice(0, 8)}`, permissions: { create: await toGrantRows(permissions) } },
+    data: {
+      name: `${TEST_PREFIX}${randomUUID().slice(0, 8)}`,
+      parentRoleId: parentRoleId ?? (await systemRoleId()),
+      permissions: { create: await toGrantRows(permissions) },
+    },
   })
 }
 
@@ -62,10 +74,16 @@ export async function login(app: App, email: string, password: string): Promise<
   return `${cookie.name}=${cookie.value}`
 }
 
-/** Removes users and roles created by tests: users first (one statement, so users who created each other go together). */
+/**
+ * Removes users and roles created by tests: users first (one statement, so users who created each other go together),
+ * then the roles, lowest first (a role can't go while a role below it exists).
+ */
 export async function cleanupTestUsers() {
   await db.user.deleteMany({ where: { email: { startsWith: TEST_PREFIX } } })
-  await db.role.deleteMany({ where: { name: { startsWith: TEST_PREFIX } } })
+  for (;;) {
+    const { count } = await db.role.deleteMany({ where: { name: { startsWith: TEST_PREFIX }, children: { none: {} } } })
+    if (count === 0) break
+  }
 }
 
 /** Resolves once db-events has invalidated the cache for `table` (writes reach the cache via Postgres NOTIFY). */

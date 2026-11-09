@@ -20,6 +20,7 @@ export const user = z.object({
   createdBy: z.string(),
   modifiedAt: z.date().nullable(),
   modifiedBy: z.string().nullable(),
+  canManage: z.boolean().describe("Whether the signed-in user may edit this user (their role is below the caller's own role)"),
 })
 
 export const userList = z.array(user)

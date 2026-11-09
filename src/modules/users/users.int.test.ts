@@ -1,19 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { App } from "#app.js"
 import { db } from "#core/db.js"
-import { TEST_PASSWORD, TEST_PREFIX, cleanupTestUsers, createTestRole, login, signIn, startApp, type TestUser } from "#test/helpers.js"
+import { TEST_PASSWORD, TEST_PREFIX, cleanupTestUsers, createTestRole, login, signIn, startApp, systemRoleId, type TestUser } from "#test/helpers.js"
 
 let app: App
-let admin: TestUser
-let roleId: string // role for users created through the API
+let admin: TestUser // an admin whose role is directly under Super Admin
+let adminRoleId: string
+let roleId: string // a role under the admin's role, for users created through the API
 const email = (label: string) => `${TEST_PREFIX}${label}-${Date.now()}@test.local`
-const ADMIN = ["ADMIN.VIEW", "ADMIN.MANAGE_USERS"] as const
+const ADMIN = ["USERS.VIEW", "USERS.CREATE", "USERS.EDIT"] as const
 
 beforeAll(async () => {
   app = await startApp()
-  admin = await signIn(app, [...ADMIN])
-  roleId = (await createTestRole(["DASHBOARD.VIEW"])).id
+  adminRoleId = (await createTestRole([...ADMIN])).id
+  admin = await signIn(app, { roleId: adminRoleId })
+  roleId = (await createTestRole(["DASHBOARD.VIEW"], adminRoleId)).id
 })
+
+/** A signed-in user in a role the admin manages. */
+const managedUser = () => signIn(app, { roleId })
 
 afterAll(async () => {
   await cleanupTestUsers()
@@ -27,12 +32,12 @@ const remove = (id: string, cookie = admin.cookie) => app.inject({ method: "DELE
 const get = (id: string) => app.inject({ url: `/api/v1/users/${id}`, headers: { cookie: admin.cookie } })
 
 describe("users", () => {
-  it("can be viewed with ADMIN.VIEW but only changed with ADMIN.MANAGE_USERS", async () => {
-    const viewer = await signIn(app, ["ADMIN.VIEW"])
+  it("can be viewed with USERS.VIEW but only created with USERS.CREATE", async () => {
+    const viewer = await signIn(app, ["USERS.VIEW"])
     expect((await app.inject({ url: "/api/v1/users", headers: { cookie: viewer.cookie } })).statusCode).toBe(200)
     const res = await create({ name: "X", email: email("x"), password: "password1", roleId }, viewer.cookie)
     expect(res.statusCode).toBe(403)
-    expect(res.json().error.details).toEqual({ permission: "ADMIN.MANAGE_USERS" })
+    expect(res.json().error.details).toEqual({ permission: "USERS.CREATE" })
   })
 
   it("creates a user with a USER00001-style id and audit fields", async () => {
@@ -45,6 +50,7 @@ describe("users", () => {
       roleId,
       roleName: expect.stringMatching(new RegExp(`^${TEST_PREFIX}`)),
       isDeleted: false,
+      canManage: true,
       createdBy: admin.id,
       modifiedBy: null,
       modifiedAt: null,
@@ -67,7 +73,7 @@ describe("users", () => {
   })
 
   it("creates a user who can then sign in with their role's permissions", async () => {
-    const role = await createTestRole(["REPORTS.VIEW"])
+    const role = await createTestRole(["REPORTS.VIEW"], adminRoleId)
     const address = email("role")
     expect((await create({ name: "Role User", email: address, password: "password1", roleId: role.id })).statusCode).toBe(201)
 
@@ -97,21 +103,22 @@ describe("users", () => {
   })
 
   it("records who modified a user and when", async () => {
-    const user = await signIn(app, ["DASHBOARD.VIEW"])
+    const user = await managedUser()
     const res = await update(user.id, { name: "Renamed" })
     expect(res.json()).toMatchObject({ name: "Renamed", modifiedBy: admin.id })
     expect(Date.now() - Date.parse(res.json().modifiedAt)).toBeLessThan(10_000)
   })
 
   it("updates profile and role separately", async () => {
-    const user = await signIn(app, ["DASHBOARD.VIEW"])
-    expect((await update(user.id, { name: "Only name" })).json()).toMatchObject({ name: "Only name", roleId: user.roleId })
-    const res = await update(user.id, { roleId })
-    expect(res.json()).toMatchObject({ name: "Only name", roleId })
+    const user = await managedUser()
+    const otherRoleId = (await createTestRole([], adminRoleId)).id
+    expect((await update(user.id, { name: "Only name" })).json()).toMatchObject({ name: "Only name", roleId })
+    const res = await update(user.id, { roleId: otherRoleId })
+    expect(res.json()).toMatchObject({ name: "Only name", roleId: otherRoleId })
   })
 
   it("replaces a password: the old one stops working and the user's sessions end", async () => {
-    const user = await signIn(app, ["DASHBOARD.VIEW"])
+    const user = await managedUser()
     expect((await update(user.id, { password: "brand-new-password" })).statusCode).toBe(200)
 
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: user.cookie } })).statusCode).toBe(401)
@@ -120,13 +127,13 @@ describe("users", () => {
   })
 
   it("keeps an admin signed in when they replace their own password", async () => {
-    const self = await signIn(app, [...ADMIN])
+    const self = await signIn(app, { roleId: adminRoleId })
     expect((await update(self.id, { password: "my-new-password" }, self.cookie)).statusCode).toBe(200)
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: self.cookie } })).statusCode).toBe(200)
   })
 
   it("deletes softly: the row stays with isDeleted true, the user is signed out and hidden from the list", async () => {
-    const user = await signIn(app, ["DASHBOARD.VIEW"])
+    const user = await managedUser()
     expect((await remove(user.id)).statusCode).toBe(204)
 
     expect((await get(user.id)).json()).toMatchObject({ id: user.id, isDeleted: true, modifiedBy: admin.id })
@@ -140,41 +147,54 @@ describe("users", () => {
   })
 
   it("restores a deleted user", async () => {
-    const user = await signIn(app, [])
+    const user = await managedUser()
     await remove(user.id)
     expect((await update(user.id, { isDeleted: false })).json().isDeleted).toBe(false)
     await expect(login(app, user.email, TEST_PASSWORD)).resolves.toBeTruthy()
   })
 
-  it("stops an admin from locking themselves out", async () => {
-    const self = await signIn(app, [...ADMIN])
+  it("lets users change their own name, email and password, not their own role or status", async () => {
+    const self = await signIn(app, { roleId: adminRoleId })
+    expect((await update(self.id, { name: "Me" }, self.cookie)).json()).toMatchObject({ name: "Me", canManage: false })
     for (const change of [{ isDeleted: true }, { roleId }]) {
       const res = await update(self.id, change, self.cookie)
-      expect(res.statusCode).toBe(409)
-      expect(res.json().error.code).toBe("SELF_LOCKOUT")
+      expect(res.statusCode).toBe(403)
+      expect(res.json().error.code).toBe("OWN_ACCOUNT")
     }
-    expect((await remove(self.id, self.cookie)).json().error.code).toBe("SELF_LOCKOUT")
-
-    // Other admins can still be changed.
-    const other = await signIn(app, [...ADMIN])
-    expect((await remove(other.id, self.cookie)).statusCode).toBe(204)
+    expect((await remove(self.id, self.cookie)).json().error.code).toBe("OWN_ACCOUNT")
   })
 
-  it("keeps at least one active user with the system role", async (ctx) => {
-    // The rule counts every system-role user, so it can only be tested where none exist yet (e.g. a fresh database).
-    if ((await db.user.count({ where: { isDeleted: false, role: { isSystem: true } } })) > 0) ctx.skip()
-
-    const system = await db.role.create({ data: { name: `${TEST_PREFIX}system-${Date.now()}`, isSystem: true } })
-    const only = await signIn(app, { roleId: system.id })
-    // Another admin can't remove the last one either way.
-    for (const res of [await remove(only.id), await update(only.id, { roleId })]) {
-      expect(res.statusCode).toBe(409)
-      expect(res.json().error.code).toBe("LAST_SUPER_ADMIN")
+  it("manages only the users in the roles below the admin's own role", async () => {
+    const peer = await signIn(app, { roleId: adminRoleId }) // same role as the admin
+    const outsider = await signIn(app, ["DASHBOARD.VIEW"]) // a role directly under Super Admin
+    expect((await get(outsider.id)).json().canManage).toBe(false)
+    for (const id of [peer.id, outsider.id]) {
+      const res = await update(id, { name: "X" })
+      expect(res.statusCode).toBe(403)
+      expect(res.json().error.code).toBe("OUTSIDE_BRANCH")
     }
+    // Nor give anyone a role outside the branch, or create a user in one.
+    const user = await managedUser()
+    expect((await update(user.id, { roleId: outsider.roleId })).json().error.code).toBe("OUTSIDE_BRANCH")
+    const created = await create({ name: "X", email: email("out"), password: "password1", roleId: adminRoleId })
+    expect(created.json().error.code).toBe("OUTSIDE_BRANCH")
+  })
 
-    // With a second one, either can go.
-    await signIn(app, { roleId: system.id })
-    expect((await update(only.id, { roleId })).statusCode).toBe(200)
+  it("never gives a user the Super Admin role, and leaves the Super Admin's account to the Super Admin", async () => {
+    const systemId = await systemRoleId()
+    const superAdmin = await signIn(app, { roleId: systemId })
+    const user = await managedUser()
+    const refused = [
+      await create({ name: "X", email: email("sys"), password: "password1", roleId: systemId }, superAdmin.cookie),
+      await update(user.id, { roleId: systemId }, superAdmin.cookie),
+    ]
+    for (const res of refused) expect(res.json().error.code).toBe("SYSTEM_ROLE")
+    // A second system-role user stands in for the one Super Admin's account here.
+    const other = await signIn(app, { roleId: systemId })
+    expect((await update(other.id, { name: "X" }, superAdmin.cookie)).json().error.code).toBe("SUPER_ADMIN_USER")
+    expect((await update(superAdmin.id, { name: "Super" }, superAdmin.cookie)).statusCode).toBe(200)
+    // The Super Admin manages every other user.
+    expect((await update(user.id, { name: "Managed" }, superAdmin.cookie)).statusCode).toBe(200)
   })
 
   it("validates the id format and 404s for an unknown user", async () => {

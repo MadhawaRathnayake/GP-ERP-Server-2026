@@ -11,6 +11,7 @@ export const currentUser = z.object({
   email: z.string(),
   roleId: z.string(),
   roleName: z.string(),
+  isSuperAdmin: z.boolean().describe("true = the user's role is the system role (Super Admin)"),
   permissions: z.array(permissionKeySchema).describe("The permissions of the user's role. Show a screen when it has <SCREEN>.VIEW"),
 })
 
@@ -35,6 +36,7 @@ export function getCurrentUser(userId: string): Promise<CurrentUser | null> {
       email: user.email,
       roleId: user.roleId,
       roleName: user.role.name,
+      isSuperAdmin: user.role.isSystem,
       permissions: roleKeys(user.role),
     }
   })

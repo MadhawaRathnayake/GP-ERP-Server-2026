@@ -8,11 +8,21 @@ import { z } from "zod"
 //
 // To add one: add a line here, put it on a route, grant it to a role. A typo in a route is a compile error.
 export const PERMISSIONS = {
-  ADMIN: {
-    VIEW: "Open the admin screen (users and roles)",
-    MANAGE_USERS: "Create, edit and deactivate users",
-    MANAGE_ROLES: "Create and edit roles",
-    EDIT_SETTINGS: "Change company settings (currency, country, timezone)",
+  // The admin screen shows the cards of the groups below that the user can view. Users and roles: an admin manages only
+  // the roles under their own role and the users in them (modules/roles/roles.access.ts).
+  USERS: {
+    VIEW: "See users (admin screen)",
+    CREATE: "Create users in the roles under your own role",
+    EDIT: "Edit and deactivate users in the roles under your own role",
+  },
+  ROLES: {
+    VIEW: "See roles and their permissions (admin screen)",
+    CREATE: "Create roles under your own role",
+    EDIT: "Edit the roles under your own role, giving them only permissions your own role has",
+  },
+  SETTINGS: {
+    VIEW: "See company settings (admin screen)",
+    EDIT: "Change company settings (currency, country, timezone, VAT)",
   },
   DROPDOWNS: {
     VIEW: "See which users each dropdown offers (admin screen)",
@@ -100,8 +110,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = Object.entries(PER
 
 const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((p) => p.key) as [PermissionKey, ...PermissionKey[]]
 
-/** An admin can never remove this from themselves, so there is always someone who can manage users. */
-export const USER_ADMIN_PERMISSION: PermissionKey = "ADMIN.MANAGE_USERS"
+/**
+ * Permission groups only the Super Admin can grant or take away, on any role. An admin can't give them to the roles
+ * under them even when their own role has them.
+ */
+export const SUPER_ADMIN_ONLY_SCREENS: readonly ScreenCode[] = ["SETTINGS", "DROPDOWNS", "APPROVALS"]
+
+export const isSuperAdminOnly = (key: PermissionKey) => SUPER_ADMIN_ONLY_SCREENS.some((screen) => key.startsWith(`${screen}.`))
 
 export const toPermissionKey = ({ screenCode, permissionCode }: { screenCode: string; permissionCode: string }) =>
   `${screenCode}.${permissionCode}`
