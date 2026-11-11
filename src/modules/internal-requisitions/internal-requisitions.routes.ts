@@ -108,7 +108,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: internalRequisition },
         description:
           "An approved IR → cancelledAfterApproved, any other → cancelled; its purchase order is cancelled too. 409 " +
-          "`INTERNAL_REQUISITION_CANCELLED`, or `PURCHASE_ORDER_NOT_CANCELLABLE` when its purchase order is completed.",
+          "`INTERNAL_REQUISITION_CANCELLED`, `PURCHASE_ORDER_NOT_CANCELLABLE` when its purchase order is completed, or " +
+          "`GOODS_ALREADY_RECEIVED` once a GRN has been approved; an open GRN is cancelled with it.",
       },
       config: { permission: "INTERNAL_REQUISITIONS.CANCEL" },
     },

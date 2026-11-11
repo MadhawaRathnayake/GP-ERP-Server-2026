@@ -111,7 +111,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: purchaseOrder },
         description:
           "An approved PO → cancelledAfterApproved, a pending or rejected one → cancelled; its internal requisition is " +
-          "cancelled too, with the same reason. 409 `PURCHASE_ORDER_NOT_CANCELLABLE` when completed or already cancelled.",
+          "cancelled too, with the same reason. 409 `PURCHASE_ORDER_NOT_CANCELLABLE` when completed or already cancelled, " +
+          "`GOODS_ALREADY_RECEIVED` once a GRN has been approved; an open GRN is cancelled with it.",
       },
       config: { permission: "PURCHASE_ORDERS.CANCEL" },
     },

@@ -53,6 +53,7 @@ const anInvoiceId = 3
 const aDeliveryNoteId = 4
 const anInternalRequisitionId = 5
 const aPurchaseOrderId = 6
+const aGoodsReceivedNoteId = 7
 const aUserId = "USER00002"
 const aRoleId = "ROLE0002"
 
@@ -67,7 +68,7 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/goods-received-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
@@ -138,6 +139,14 @@ describe("app wiring", () => {
     ["POST", `/api/v1/purchase-orders/${aPurchaseOrderId}/approve`, "PURCHASE_ORDERS.APPROVE"],
     ["POST", `/api/v1/purchase-orders/${aPurchaseOrderId}/reject`, "PURCHASE_ORDERS.REJECT"],
     ["POST", `/api/v1/purchase-orders/${aPurchaseOrderId}/cancel`, "PURCHASE_ORDERS.CANCEL"],
+    ["GET", "/api/v1/goods-received-notes", "GOODS_RECEIVED_NOTES.VIEW"],
+    ["GET", `/api/v1/goods-received-notes/orders/${anInternalRequisitionId}`, "GOODS_RECEIVED_NOTES.VIEW"],
+    ["GET", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}`, "GOODS_RECEIVED_NOTES.VIEW"],
+    ["POST", "/api/v1/goods-received-notes", "GOODS_RECEIVED_NOTES.CREATE"],
+    ["PATCH", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}`, "GOODS_RECEIVED_NOTES.EDIT"],
+    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/approve`, "GOODS_RECEIVED_NOTES.APPROVE"],
+    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/reject`, "GOODS_RECEIVED_NOTES.REJECT"],
+    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/cancel`, "GOODS_RECEIVED_NOTES.CANCEL"],
     ["GET", "/api/v1/dropdowns", "DROPDOWNS.VIEW"],
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],
     ["GET", "/api/v1/approvals/rules", "APPROVALS.VIEW"],

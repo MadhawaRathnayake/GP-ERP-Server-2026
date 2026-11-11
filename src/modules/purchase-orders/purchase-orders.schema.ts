@@ -15,7 +15,7 @@ export const purchaseOrderStatus = z
   .enum(["pending", "approved", "rejected", "completed", "cancelled", "cancelledAfterApproved"])
   .describe(
     "pending → approved | rejected (or approved on save when approval is off). Editing a rejected one → pending. " +
-      "completed is set by the GRN (not built yet). Cancelling an approved one → cancelledAfterApproved, any other → cancelled",
+      "completed is set when its approved GRNs have received every line. Cancelling an approved one → cancelledAfterApproved, any other → cancelled",
   )
 
 const party = z.object({ id: z.string(), name: z.string() })

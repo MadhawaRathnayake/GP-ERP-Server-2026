@@ -133,6 +133,11 @@ model User {
   modifiedPurchaseOrders           PurchaseOrder[]           @relation("PurchaseOrderModifiedBy")
   createdPurchaseOrderItems        PurchaseOrderItem[]       @relation("PurchaseOrderItemCreatedBy")
   modifiedPurchaseOrderItems       PurchaseOrderItem[]       @relation("PurchaseOrderItemModifiedBy")
+  cancelledGoodsReceivedNotes      GoodsReceivedNote[]       @relation("GoodsReceivedNoteCancelledBy")
+  createdGoodsReceivedNotes        GoodsReceivedNote[]       @relation("GoodsReceivedNoteCreatedBy")
+  modifiedGoodsReceivedNotes       GoodsReceivedNote[]       @relation("GoodsReceivedNoteModifiedBy")
+  createdGoodsReceivedNoteItems    GoodsReceivedNoteItem[]   @relation("GoodsReceivedNoteItemCreatedBy")
+  modifiedGoodsReceivedNoteItems   GoodsReceivedNoteItem[]   @relation("GoodsReceivedNoteItemModifiedBy")
   createdApprovalRules             ApprovalRule[]            @relation("ApprovalRuleCreatedBy")
   modifiedApprovalRules            ApprovalRule[]            @relation("ApprovalRuleModifiedBy")
   createdApprovals                 Approval[]                @relation("ApprovalCreatedBy")
@@ -270,6 +275,7 @@ model Product {
   invoiceItems             InvoiceItem[]
   internalRequisitionItems InternalRequisitionItem[]
   purchaseOrderItems       PurchaseOrderItem[]
+  goodsReceivedNoteItems   GoodsReceivedNoteItem[]
   creator                  User?                     @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy                String?
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
@@ -330,7 +336,8 @@ enum StockBucket {
   onArrival
 }
 
-// Every change to a Product stock column, e.g. +10 inTransit when goods ship, then -10 inTransit / +10 inHand on arrival.
+// Every change to a Product stock column, e.g. +10 inHand when a GRN is approved, then -10 inHand / +10 inTransit when an
+// invoice is finalized (goods sold, on their way to the customer).
 model StockMovement {
   id           Int         @id @default(autoincrement())
   productId    String
@@ -426,6 +433,7 @@ model Supplier {
   pvNumber             String?
   internalRequisitions InternalRequisition[]
   purchaseOrders       PurchaseOrder[]
+  goodsReceivedNotes   GoodsReceivedNote[]
   creator              User?                 @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy            String?
   createdAt            DateTime              @default(now()) @db.Timestamptz(3)
@@ -824,6 +832,7 @@ model InternalRequisition {
   cancelledAt               DateTime?                 @db.Timestamptz(3)
   items                     InternalRequisitionItem[]
   purchaseOrder             PurchaseOrder? // local IRs only
+  goodsReceivedNotes        GoodsReceivedNote[] // from its approved PO (local) or from the IR itself (international)
   creator                   User?                     @relation("InternalRequisitionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy                 String?
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
@@ -862,8 +871,8 @@ model InternalRequisitionItem {
   @@index([productId])
 }
 
-// pending (editable; waiting for approval) → approved | rejected; approved → completed (all goods received, set by the
-// GRN, not built yet). A rejected PO can be edited and resubmitted (→ pending). Cancelling an approved PO stores
+// pending (editable; waiting for approval) → approved | rejected; approved → completed (set when its approved GRNs have
+// received every line in full). A rejected PO can be edited and resubmitted (→ pending). Cancelling an approved PO stores
 // cancelledAfterApproved, a pending or rejected one cancelled, so the status shows how far it got; it cancels the IR
 // too, as in the old system. Who approved or rejected, when and why: Approval rows (screen PURCHASE_ORDERS). The old IR
 // statuses poCreated / poApproved aren't copied: the IR shows its PO.
@@ -945,5 +954,81 @@ model PurchaseOrderItem {
   isDeleted       Boolean       @default(false)
 
   @@index([purchaseOrderId, lineNo])
+  @@index([productId])
+}
+
+// pending (editable; waiting for approval) → approved | rejected. A rejected GRN can be edited and resubmitted
+// (→ pending); a pending or rejected one can be cancelled (no stock has moved). Approving adds the received quantities
+// to stock (StockMovement rows, reference = the GRN number) in the same transaction, so an approved GRN is final. Who
+// approved or rejected, when and why: Approval rows (screen GOODS_RECEIVED_NOTES). The old statuses incomplete and
+// completed, and the old separate "Add to stock" step (addedToStockQty), aren't copied: each GRN is one delivery, and how
+// much of the order has arrived is the sum of its approved GRNs; the PO becomes completed when all of it has.
+enum GoodsReceivedNoteStatus {
+  pending
+  approved
+  rejected
+  cancelled // cancelled while pending or rejected
+}
+
+// Goods received from the supplier in one delivery; the last step of IR → purchase order → GRN. Made from a local IR's
+// approved purchase order, or from an approved international IR (which has no PO). The PO, when there is one, is
+// internalRequisition.purchaseOrder (one per IR), so it isn't stored twice. An order can arrive in several GRNs, but only
+// one may be open (pending or rejected) at a time, so received quantities can't be counted twice. "Prepared by" is
+// createdBy, as in the old system.
+// Hand-written SQL (20261111090000_goods_received_notes): next_grn_number() (GPGRN-0001, GPGRN-0002, … as in the old
+// system), the partial unique index GoodsReceivedNote_one_open_per_requisition, CHECKs GoodsReceivedNote_cancel_check
+// and GoodsReceivedNoteItem_quantity_check.
+model GoodsReceivedNote {
+  id                      Int                     @id @default(autoincrement())
+  grnNumber               String                  @unique @default(dbgenerated("next_grn_number()"))
+  internalRequisitionId   Int
+  internalRequisition     InternalRequisition     @relation(fields: [internalRequisitionId], references: [id], onDelete: Restrict)
+  supplierId              String // the PO's supplier (an international IR's own), copied on create; never changes
+  supplier                Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  receivedDate            DateTime                @db.Date // the printed date (the old `date`); today by default, can be chosen
+  supplierInvoiceNumber   String?
+  status                  GoodsReceivedNoteStatus @default(pending)
+  cancelReason            String?
+  canceller               User?                   @relation("GoodsReceivedNoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  cancelledBy             String?
+  cancelledAt             DateTime?               @db.Timestamptz(3)
+  items                   GoodsReceivedNoteItem[]
+  creator                 User?                   @relation("GoodsReceivedNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy               String?
+  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
+  modifier                User?                   @relation("GoodsReceivedNoteModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy              String?
+  modifiedAt              DateTime?               @db.Timestamptz(3)
+  isDeleted               Boolean                 @default(false)
+
+  @@index([internalRequisitionId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// One line per product of the order (the PO's lines, or the international IR's), even when none of it came this time,
+// so the printed GRN shows the whole order as the old one did. receivedQuantity is at most what is still outstanding:
+// orderedQuantity minus what the order's approved GRNs received, checked on save and again on approval with the IR row
+// locked. Saving new lines soft-deletes the old ones, as on InvoiceItem.
+model GoodsReceivedNoteItem {
+  id                  Int               @id @default(autoincrement())
+  goodsReceivedNoteId Int
+  goodsReceivedNote   GoodsReceivedNote @relation(fields: [goodsReceivedNoteId], references: [id], onDelete: Restrict)
+  lineNo              Int // display order, 1, 2, 3, …
+  productId           String
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderedQuantity     Int // the order line's quantity, copied; printed as "Ordered Qty"
+  receivedQuantity    Int // received in this delivery, 0 or more; the GRN needs at least one line above 0
+  remarks             String?
+  creator             User?             @relation("GoodsReceivedNoteItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy           String?
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  modifier            User?             @relation("GoodsReceivedNoteItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy          String?
+  modifiedAt          DateTime?         @db.Timestamptz(3)
+  isDeleted           Boolean           @default(false)
+
+  @@index([goodsReceivedNoteId, lineNo])
   @@index([productId])
 }

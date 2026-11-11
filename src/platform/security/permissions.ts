@@ -98,6 +98,14 @@ export const PERMISSIONS = {
     REJECT: "Reject pending purchase orders, with a reason",
     CANCEL: "Cancel purchase orders, with a reason (also cancels the internal requisition)",
   },
+  GOODS_RECEIVED_NOTES: {
+    VIEW: "View goods received notes (GRNs)",
+    CREATE: "Create a GRN from an approved purchase order or an approved international internal requisition",
+    EDIT: "Edit pending and rejected GRNs (editing a rejected one resubmits it)",
+    APPROVE: "Approve pending GRNs (adds the received goods to stock)",
+    REJECT: "Reject pending GRNs, with a reason",
+    CANCEL: "Cancel pending and rejected GRNs, with a reason",
+  },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>
 

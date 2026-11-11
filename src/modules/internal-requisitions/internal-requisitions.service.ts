@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import { isApprovalRequired, listApprovals, recordApproval } from "#modules/approvals/approvals.service.js"
+import { cancelGoodsReceivedNotesOfRequisition } from "#modules/goods-received-notes/goods-received-notes.service.js"
 import { cancelPurchaseOrderOfRequisition } from "#modules/purchase-orders/purchase-orders.service.js"
 import {
   InternalRequisitionCancelledError,
@@ -21,10 +22,8 @@ import type {
 // Saving starts it as pending, or as approved (an automatic Approval row) when Admin → Approvals says internal
 // requisitions don't need approval. A pending IR is approved or rejected (modules/approvals keeps every decision); a
 // pending or rejected one can be edited, and editing a rejected one submits it again. Cancelling needs a reason, and
-// cancels the IR's purchase order too (modules/purchase-orders); a local IR is approved by saving its purchase order.
-//
-// NOT BUILT YET: GRNs. When they exist, an international IR with a GRN can't be cancelled; check that in
-// cancelInternalRequisition (a local one is covered by its completed purchase order).
+// cancels the IR's purchase order (modules/purchase-orders) and its open GRN (modules/goods-received-notes) too; it's
+// refused once goods have been received on a GRN. A local IR is approved by saving its purchase order.
 
 const SCREEN = "INTERNAL_REQUISITIONS"
 
@@ -146,8 +145,8 @@ export function rejectInternalRequisition(id: number, reason: string, actor: Act
 }
 
 /**
- * Cancels a pending or rejected IR (→ cancelled) or an approved one (→ cancelledAfterApproved), and its purchase order
- * (refused once that is completed).
+ * Cancels a pending or rejected IR (→ cancelled) or an approved one (→ cancelledAfterApproved), its purchase order and
+ * its open GRN. Refused once goods have been received on a GRN.
  */
 export async function cancelInternalRequisition(id: number, reason: string, actor: Actor) {
   await db.$transaction(async (tx) => {
@@ -156,6 +155,7 @@ export async function cancelInternalRequisition(id: number, reason: string, acto
     if (!requisition || requisition.isDeleted) throw new NotFoundError("Internal requisition", String(id))
     if (cancelledStatuses.includes(requisition.status)) throw new InternalRequisitionCancelledError(id)
     await cancelPurchaseOrderOfRequisition(tx, id, reason, actor)
+    await cancelGoodsReceivedNotesOfRequisition(tx, id, reason, actor)
 
     const now = new Date()
     await tx.internalRequisition.update({

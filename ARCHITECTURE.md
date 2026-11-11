@@ -19,7 +19,8 @@ For how to add an API, permissions, caching and errors, see the [README](README.
                                    ▼                                                      ▼
  ┌─ modules/ — business capabilities ────────────────────────────────────────────────────────────────┐
  │  products · categories · customers · suppliers · quotations · users · roles · settings · dropdowns │
- │  · approvals · internal-requisitions · purchase-orders · stock · auth · permissions · health       │
+ │  · approvals · internal-requisitions · purchase-orders · goods-received-notes · stock · auth       │
+ │  · permissions · health                                                                            │
  │  services hold the business rules and know nothing about HTTP, cookies or who called them          │
  └─────────────────┬──────────────────────────────────────────────────────┬───────────────────────────┘
                    ▼                                                      ▼
