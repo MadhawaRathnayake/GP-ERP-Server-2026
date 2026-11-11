@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { pageQuery, pageResult } from "#http/pagination.js"
 import { approvalList } from "#modules/approvals/approvals.schema.js"
+import { purchaseOrderStatus } from "#modules/purchase-orders/purchase-orders.schema.js"
 import { dateOnly } from "#modules/quotations/quotations.schema.js"
 
 const supplierId = z.string().regex(/^SUP\d{5,}$/, "Must be a supplier id like SUP00001")
@@ -36,7 +37,7 @@ export const internalRequisitionSummary = z.object({
   supplierId: z.string(),
   supplier: party.extend({ code: z.string() }),
   status: internalRequisitionStatus,
-  isInternational: z.boolean().describe("No purchase order: the GRN is made from the IR"),
+  isInternational: z.boolean().describe("No purchase order: the printed IR is the document, and the GRN is made from it"),
   eta: dateOnly.nullable().describe("Expected arrival"),
   cancelReason: z.string().nullable(),
   cancelledBy: z.string().nullable(),
@@ -50,7 +51,22 @@ export const internalRequisitionSummary = z.object({
 })
 
 export const internalRequisition = internalRequisitionSummary.extend({
-  supplier: party.extend({ code: z.string(), vatNumber: z.string().nullable() }),
+  supplier: party.extend({
+    code: z.string(),
+    vatNumber: z.string().nullable(),
+    email: z.string().nullable(),
+    phones: z.array(z.string()),
+    houseNumber: z.string().nullable(),
+    street: z.string().nullable(),
+    city: z.string().nullable(),
+    district: z.string().nullable(),
+    province: z.string().nullable(),
+    country: z.string(),
+  }),
+  purchaseOrder: z
+    .object({ id: z.number().int(), purchaseOrderNumber: z.string(), status: purchaseOrderStatus })
+    .nullable()
+    .describe("Local IRs: their purchase order, once made"),
   items: z.array(internalRequisitionItem),
   canceller: party.nullable(),
   approvals: approvalList,

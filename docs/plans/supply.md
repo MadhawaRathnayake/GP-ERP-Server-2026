@@ -1,8 +1,9 @@
 # Procurement: internal requisitions, purchase orders, GRNs (porting brief)
 
-Status: **internal requisitions built (server)**: `src/modules/internal-requisitions/`, with approval (`modules/approvals`)
-instead of the old `poCreated`/`poApproved`/`grnCreated` IR statuses (see the comment on `InternalRequisitionStatus`).
-Next: the client pages, then purchase orders and GRNs. Analyse the old system, fill in §5 with the owner, then build.
+Status: **internal requisitions built (server and client)**: `src/modules/internal-requisitions/`, with approval
+(`modules/approvals`) instead of the old `poCreated`/`poApproved`/`grnCreated` IR statuses (see the comment on
+`InternalRequisitionStatus`). **Purchase orders built (server and client, §7)**: `src/modules/purchase-orders/`,
+migration `20261110090000_purchase_orders` (to apply), the IR and PO PDFs ported. Next: GRNs.
 
 ## 0. Read first
 
@@ -94,3 +95,44 @@ Client (Gatsby + Redux): `C:\Users\madha\Documents\Development-22-10-2026\GP-Sys
 3. Build one document at a time (IR → PO → GRN), each end to end: server module, tests and access matrix, then the
    client pages. Run the checks in both `AGENTS.md` files.
 4. Then update this file's Status line, the client's "Current pages" table, `README.md`, and the "not built yet" notes.
+
+## 7. Purchase orders (built 2026-11-10)
+
+Owner's brief: a PO is made only from a **local** IR (`isInternational = false`); the IR's Approve button becomes
+**"Approve & create purchase order"**, which opens the new-PO form; nothing is saved until that form is, and saving it
+approves the IR and creates the PO in one transaction. An international IR gets no PO: its printed IR is the document.
+The IR and PO PDFs are exact ports of the old ones.
+
+### 7.1 Old behaviour (`routers/purchaseOrder.js`, `components/purchaseOrders/`) → **B**ring / **A**dapt / **U**pgrade / **L**eave out
+
+| Old | Here |
+|---|---|
+| IR view "Create Purchase Order" opens the new-PO form filled from the IR; saving sets the IR to `poCreated` | **A**: "Approve & create purchase order" opens `/purchase-orders/create?internalRequisitionId=`; saving approves the IR (needs `INTERNAL_REQUISITIONS.APPROVE` too) and creates the PO. An IR approved on its own (approval off) gets "Create purchase order" |
+| International IR: no PO | **B** |
+| API allowed a PO without an IR (the form refused) | **L**: `internalRequisitionId` required and unique; no Create button on the PO list |
+| `GPPO-0001` | **B**: sequence + `next_purchase_order_number()` |
+| `date` picked in the form | **B**: `purchaseOrderDate`, today by default |
+| Supplier changeable on the form | **B** while pending or rejected |
+| Lines: qty, unit price (> 0), discount `%` / `LKR`; remove; no adding | **B**: `DiscountType` percentage / fixed; removed IR lines can be added back on the form |
+| VAT 18 % hard-coded from 8 Jan 2024 | **A**: `Setting.vatRate` per line, totals by the server |
+| `comments` (printed), `remarks` (not printed) | **B** |
+| `pending → approved` (admin) `→ completed` (manual); `cancelled` | **A**: `pending → approved / rejected` through `modules/approvals` (screen `PURCHASE_ORDERS`); `completed` reserved for the GRN, no manual button |
+| Edit only while pending | **A**: pending and rejected (editing a rejected one resubmits it) |
+| Approving the PO sets the IR to `poApproved` | **L**: the IR stays `approved` and shows its PO and the PO's status |
+| Cancel with a reason; also cancels the IR | **B**: `cancelled` / `cancelledAfterApproved`; IR → `cancelledAfterApproved`, same reason. **U**: cancelling an IR cancels its PO |
+| Delete pending PO (admin) | **L**: cancel instead |
+| `GET /purchase-orders/supplier/:code` | **L**: the list search covers it |
+| PO PDF shown once approved; IR PDF always | **B** |
+
+### 7.2 Built
+
+- Server: `PurchaseOrderStatus`, `PurchaseOrder`, `PurchaseOrderItem` and migration `20261110090000_purchase_orders`;
+  `src/modules/purchase-orders/` (list, detail, create, update, approve, reject, cancel, with schema and integration
+  tests); the IR's cancel cascades and its detail returns `purchaseOrder` and the supplier's address fields;
+  `PURCHASE_ORDERS` in `APPROVAL_SCREENS`; permissions `PURCHASE_ORDERS.{VIEW, CREATE, EDIT, APPROVE, REJECT, CANCEL}`.
+- Client: `pages/PurchaseOrders/` (list, detail, create from an IR, edit, `PurchaseOrderDocument.tsx`);
+  `pages/InternalRequisitions/InternalRequisitionDocument.tsx`; IR page buttons, PO row and Print.
+- PDFs proven against the old files with the invoices.md §7 method (one- and two-page IRs and POs): identical, except
+  page 2+ of a multi-page PO, whose rows are 1pt higher (react-pdf v4 doesn't redraw a split view's top border). The
+  adaptations for react-pdf v4 are listed in each document's header comment.
+- Stock: a PO moves none. Whether approval adds `+onArrival` is still §5.1, to decide with GRNs.

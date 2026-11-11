@@ -128,6 +128,11 @@ model User {
   modifiedInternalRequisitions     InternalRequisition[]     @relation("InternalRequisitionModifiedBy")
   createdInternalRequisitionItems  InternalRequisitionItem[] @relation("InternalRequisitionItemCreatedBy")
   modifiedInternalRequisitionItems InternalRequisitionItem[] @relation("InternalRequisitionItemModifiedBy")
+  cancelledPurchaseOrders          PurchaseOrder[]           @relation("PurchaseOrderCancelledBy")
+  createdPurchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  modifiedPurchaseOrders           PurchaseOrder[]           @relation("PurchaseOrderModifiedBy")
+  createdPurchaseOrderItems        PurchaseOrderItem[]       @relation("PurchaseOrderItemCreatedBy")
+  modifiedPurchaseOrderItems       PurchaseOrderItem[]       @relation("PurchaseOrderItemModifiedBy")
   createdApprovalRules             ApprovalRule[]            @relation("ApprovalRuleCreatedBy")
   modifiedApprovalRules            ApprovalRule[]            @relation("ApprovalRuleModifiedBy")
   createdApprovals                 Approval[]                @relation("ApprovalCreatedBy")
@@ -264,6 +269,7 @@ model Product {
   quotationItems           QuotationItem[]
   invoiceItems             InvoiceItem[]
   internalRequisitionItems InternalRequisitionItem[]
+  purchaseOrderItems       PurchaseOrderItem[]
   creator                  User?                     @relation("ProductCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy                String?
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
@@ -419,6 +425,7 @@ model Supplier {
   tinNumber            String?
   pvNumber             String?
   internalRequisitions InternalRequisition[]
+  purchaseOrders       PurchaseOrder[]
   creator              User?                 @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy            String?
   createdAt            DateTime              @default(now()) @db.Timestamptz(3)
@@ -789,7 +796,8 @@ model Approval {
 // pending (editable; waiting for approval) → approved | rejected. A rejected IR can be edited and resubmitted
 // (→ pending). Cancelling a pending IR stores cancelled, an approved one cancelledAfterApproved, so the status shows
 // how far it got. Who approved or rejected, when and why: Approval rows (screen INTERNAL_REQUISITIONS). Purchase
-// orders and GRNs have their own statuses.
+// orders and GRNs have their own statuses. A local (not international) IR is approved by saving its purchase order
+// ("Approve & create purchase order"); one approved on save (no approval needed) gets its purchase order afterwards.
 enum InternalRequisitionStatus {
   pending
   approved
@@ -815,6 +823,7 @@ model InternalRequisition {
   cancelledBy               String?
   cancelledAt               DateTime?                 @db.Timestamptz(3)
   items                     InternalRequisitionItem[]
+  purchaseOrder             PurchaseOrder? // local IRs only
   creator                   User?                     @relation("InternalRequisitionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   createdBy                 String?
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
@@ -850,5 +859,91 @@ model InternalRequisitionItem {
   isDeleted             Boolean             @default(false)
 
   @@index([internalRequisitionId, lineNo])
+  @@index([productId])
+}
+
+// pending (editable; waiting for approval) → approved | rejected; approved → completed (all goods received, set by the
+// GRN, not built yet). A rejected PO can be edited and resubmitted (→ pending). Cancelling an approved PO stores
+// cancelledAfterApproved, a pending or rejected one cancelled, so the status shows how far it got; it cancels the IR
+// too, as in the old system. Who approved or rejected, when and why: Approval rows (screen PURCHASE_ORDERS). The old IR
+// statuses poCreated / poApproved aren't copied: the IR shows its PO.
+enum PurchaseOrderStatus {
+  pending
+  approved
+  rejected
+  completed
+  cancelled // cancelled while pending or rejected
+  cancelledAfterApproved // cancelled while approved
+}
+
+// An order to the supplier for a local internal requisition (one PO per IR; international IRs have none). Made by
+// "Approve & create purchase order" on a pending IR (saving it approves the IR in the same transaction) or "Create
+// purchase order" on an approved one. The supplier and the lines start as the IR's; lines can be repriced, discounted,
+// given another quantity or removed, not added. "Created by" is createdBy, as on the IR. The totals work like
+// Quotation's: sums of the non-deleted lines, worked out by the server, never accepted from clients.
+// grandTotal = subtotal − discountTotal + taxTotal.
+// Hand-written SQL (20261110090000_purchase_orders): next_purchase_order_number() (GPPO-0001, GPPO-0002, … as in the
+// old system), CHECKs PurchaseOrder_cancel_check and PurchaseOrderItem_amounts_check.
+model PurchaseOrder {
+  id                    Int                 @id @default(autoincrement())
+  purchaseOrderNumber   String              @unique @default(dbgenerated("next_purchase_order_number()"))
+  internalRequisitionId Int                 @unique
+  internalRequisition   InternalRequisition @relation(fields: [internalRequisitionId], references: [id], onDelete: Restrict)
+  supplierId            String // starts as the IR's supplier; can be changed while pending or rejected
+  supplier              Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrderDate     DateTime            @db.Date // the printed date; today by default, can be chosen
+  status                PurchaseOrderStatus @default(pending)
+  comments              String? // printed: "Comments or Special Instructions"
+  remarks               String? // internal, not printed
+  subtotal              Decimal             @default(0) @db.Decimal(14, 2) // Σ line subtotal
+  discountTotal         Decimal             @default(0) @db.Decimal(14, 2) // Σ line discountAmount
+  taxTotal              Decimal             @default(0) @db.Decimal(14, 2) // Σ line taxAmount
+  grandTotal            Decimal             @default(0) @db.Decimal(14, 2) // Σ line lineTotal
+  cancelReason          String?
+  canceller             User?               @relation("PurchaseOrderCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  cancelledBy           String?
+  cancelledAt           DateTime?           @db.Timestamptz(3)
+  items                 PurchaseOrderItem[]
+  creator               User?               @relation("PurchaseOrderCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy             String?
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  modifier              User?               @relation("PurchaseOrderModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy            String?
+  modifiedAt            DateTime?           @db.Timestamptz(3)
+  isDeleted             Boolean             @default(false)
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// One product line of a purchase order; its product is one of the IR's. Same discount and tax formulas as
+// QuotationItem; taxRate is Setting.vatRate when the line is saved. The old discount types map as % → percentage,
+// LKR → fixed. Saving new lines soft-deletes the old ones, as on InvoiceItem.
+model PurchaseOrderItem {
+  id              Int           @id @default(autoincrement())
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  lineNo          Int // display order, 1, 2, 3, …
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity        Int // whole units, at least 1; starts as the IR line's quantity
+  unitPrice       Decimal       @db.Decimal(14, 2) // the supplier's price, more than 0
+  discountType    DiscountType  @default(none)
+  discountValue   Decimal       @default(0) @db.Decimal(14, 2)
+  taxRate         Decimal       @default(0) @db.Decimal(5, 2) // percent, e.g. 18.00
+  subtotal        Decimal       @db.Decimal(14, 2)
+  discountAmount  Decimal       @db.Decimal(14, 2)
+  taxAmount       Decimal       @db.Decimal(14, 2)
+  lineTotal       Decimal       @db.Decimal(14, 2)
+  creator         User?         @relation("PurchaseOrderItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy       String?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  modifier        User?         @relation("PurchaseOrderItemModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy      String?
+  modifiedAt      DateTime?     @db.Timestamptz(3)
+  isDeleted       Boolean       @default(false)
+
+  @@index([purchaseOrderId, lineNo])
   @@index([productId])
 }

@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import { isApprovalRequired, listApprovals, recordApproval } from "#modules/approvals/approvals.service.js"
+import { cancelPurchaseOrderOfRequisition } from "#modules/purchase-orders/purchase-orders.service.js"
 import {
   InternalRequisitionCancelledError,
   InternalRequisitionNotEditableError,
@@ -19,10 +20,11 @@ import type {
 // A request to buy products from one supplier, the first step of IR → purchase order → GRN. It doesn't move stock.
 // Saving starts it as pending, or as approved (an automatic Approval row) when Admin → Approvals says internal
 // requisitions don't need approval. A pending IR is approved or rejected (modules/approvals keeps every decision); a
-// pending or rejected one can be edited, and editing a rejected one submits it again. Cancelling needs a reason.
+// pending or rejected one can be edited, and editing a rejected one submits it again. Cancelling needs a reason, and
+// cancels the IR's purchase order too (modules/purchase-orders); a local IR is approved by saving its purchase order.
 //
-// NOT BUILT YET: purchase orders and GRNs. When they exist, an approved IR with a purchase order (or, international,
-// with a GRN) can't be cancelled; check that in cancelInternalRequisition.
+// NOT BUILT YET: GRNs. When they exist, an international IR with a GRN can't be cancelled; check that in
+// cancelInternalRequisition (a local one is covered by its completed purchase order).
 
 const SCREEN = "INTERNAL_REQUISITIONS"
 
@@ -36,7 +38,23 @@ const summaryInclude = {
 // The detail also carries what the printed IR shows.
 const detailInclude = {
   ...summaryInclude,
-  supplier: { select: { id: true, code: true, name: true, vatNumber: true } },
+  supplier: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      vatNumber: true,
+      email: true,
+      phones: true,
+      houseNumber: true,
+      street: true,
+      city: true,
+      district: true,
+      province: true,
+      country: true,
+    },
+  },
+  purchaseOrder: { select: { id: true, purchaseOrderNumber: true, status: true } },
   items: {
     where: { isDeleted: false },
     orderBy: { lineNo: "asc" },
@@ -127,13 +145,17 @@ export function rejectInternalRequisition(id: number, reason: string, actor: Act
   return decide(id, "rejected", reason, actor)
 }
 
-/** Cancels a pending or rejected IR (→ cancelled) or an approved one (→ cancelledAfterApproved). */
+/**
+ * Cancels a pending or rejected IR (→ cancelled) or an approved one (→ cancelledAfterApproved), and its purchase order
+ * (refused once that is completed).
+ */
 export async function cancelInternalRequisition(id: number, reason: string, actor: Actor) {
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM "InternalRequisition" WHERE id = ${id} FOR UPDATE`
     const requisition = await tx.internalRequisition.findUnique({ where: { id }, select: { status: true, isDeleted: true } })
     if (!requisition || requisition.isDeleted) throw new NotFoundError("Internal requisition", String(id))
     if (cancelledStatuses.includes(requisition.status)) throw new InternalRequisitionCancelledError(id)
+    await cancelPurchaseOrderOfRequisition(tx, id, reason, actor)
 
     const now = new Date()
     await tx.internalRequisition.update({

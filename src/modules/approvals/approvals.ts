@@ -8,6 +8,7 @@
 //      the status, and its detail response includes listApprovals().
 export const APPROVAL_SCREENS = {
   INTERNAL_REQUISITIONS: "Internal requisitions",
+  PURCHASE_ORDERS: "Purchase orders",
 } as const satisfies Record<string, string>
 
 export type ApprovalScreen = keyof typeof APPROVAL_SCREENS

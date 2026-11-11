@@ -37,7 +37,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: internalRequisitionIdParams, response: { 200: internalRequisition } },
       config: {
         permission: "INTERNAL_REQUISITIONS.VIEW",
-        cache: ["InternalRequisition", "InternalRequisitionItem", "Supplier", "Product", "User", "Approval"],
+        cache: ["InternalRequisition", "InternalRequisitionItem", "PurchaseOrder", "Supplier", "Product", "User", "Approval"],
       },
     },
     (req) => getInternalRequisition(req.params.id),
@@ -106,7 +106,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
         params: internalRequisitionIdParams,
         body: cancelInternalRequisitionBody,
         response: { 200: internalRequisition },
-        description: "An approved IR → cancelledAfterApproved, any other → cancelled. 409 `INTERNAL_REQUISITION_CANCELLED`.",
+        description:
+          "An approved IR → cancelledAfterApproved, any other → cancelled; its purchase order is cancelled too. 409 " +
+          "`INTERNAL_REQUISITION_CANCELLED`, or `PURCHASE_ORDER_NOT_CANCELLABLE` when its purchase order is completed.",
       },
       config: { permission: "INTERNAL_REQUISITIONS.CANCEL" },
     },

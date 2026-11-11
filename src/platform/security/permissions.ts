@@ -90,6 +90,14 @@ export const PERMISSIONS = {
     REJECT: "Reject pending internal requisitions, with a reason",
     CANCEL: "Cancel internal requisitions, with a reason",
   },
+  PURCHASE_ORDERS: {
+    VIEW: "View purchase orders",
+    CREATE: "Create a purchase order from a local internal requisition (from a pending one also needs Approve internal requisitions)",
+    EDIT: "Edit pending and rejected purchase orders (editing a rejected one resubmits it)",
+    APPROVE: "Approve pending purchase orders",
+    REJECT: "Reject pending purchase orders, with a reason",
+    CANCEL: "Cancel purchase orders, with a reason (also cancels the internal requisition)",
+  },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>
 
