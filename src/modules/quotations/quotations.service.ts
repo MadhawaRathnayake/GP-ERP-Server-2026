@@ -20,6 +20,7 @@ import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, Upda
 const summaryInclude = {
   customer: { select: { id: true, code: true, name: true } },
   salesManager: { select: { id: true, name: true } },
+  confirmedBy: { select: { id: true, name: true } },
 } satisfies Prisma.QuotationInclude
 
 // The detail also carries what the printed quotation shows about the customer and each product, so printing it needs
@@ -164,7 +165,13 @@ export async function updateQuotation(
     }
     await tx.quotation.update({
       where: { id },
-      data: { ...data, status, ...(repriced && pricing(type, serviceCharge, lines ?? [], vatRate)), ...modified },
+      data: {
+        ...data,
+        status,
+        ...(repriced && pricing(type, serviceCharge, lines ?? [], vatRate)),
+        ...confirmedBy(before.status, after.status, actor),
+        ...modified,
+      },
     })
   })
   return getQuotation(id)
@@ -195,6 +202,17 @@ function cancelledStatus(current: QuotationStatus): QuotationStatus {
     default:
       return "cancelled"
   }
+}
+
+/**
+ * Who confirmed: the actor when the status becomes paymentConfirmed or creditConfirmed, nobody once it's active again.
+ * Cancelling keeps it, like cancelledAfterCredit/Payment keep the confirmation.
+ */
+function confirmedBy(before: QuotationStatus, after: QuotationStatus, actor: Actor) {
+  if (after === before) return {}
+  if (after === "paymentConfirmed" || after === "creditConfirmed") return { confirmedById: actor.id }
+  if (after === "active") return { confirmedById: null }
+  return {}
 }
 
 /** Each line with the product's title, price and cost filled in, the VAT rate, and its amounts. */

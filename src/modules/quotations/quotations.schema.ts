@@ -98,6 +98,8 @@ export const quotationSummary = z.object({
   serviceTaxRate: money.nullable().describe("Service quotations only: VAT percent from the settings when the charge was saved"),
   isPreOrdered: z.boolean(),
   status: quotationStatus,
+  confirmedById: z.string().nullable().describe("Who set paymentConfirmed or creditConfirmed; kept when cancelled, cleared when reopened"),
+  confirmedBy: party.nullable(),
   subtotal: money,
   discountTotal: money,
   taxTotal: money,

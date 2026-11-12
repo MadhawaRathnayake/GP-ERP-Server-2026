@@ -69,5 +69,7 @@
 | `20261109160000_internal_requisitions` | Enum `InternalRequisitionStatus`; tables `InternalRequisition` (`internalRequisitionNumber` `GPIR-0001` from `next_internal_requisition_number()` and `internal_requisition_number_seq`) and `InternalRequisitionItem` (integer ids); CHECKs `InternalRequisition_cancel_check`, `InternalRequisitionItem_quantity_check`; cache triggers |
 | `20261110090000_purchase_orders` | Enum `PurchaseOrderStatus`; tables `PurchaseOrder` (`purchaseOrderNumber` `GPPO-0001` from `next_purchase_order_number()` and `purchase_order_number_seq`; `internalRequisitionId` unique) and `PurchaseOrderItem` (integer ids); CHECKs `PurchaseOrder_cancel_check`, `PurchaseOrderItem_amounts_check`; cache triggers |
 | `20261111090000_goods_received_notes` | Enum `GoodsReceivedNoteStatus`; tables `GoodsReceivedNote` (`grnNumber` `GPGRN-0001` from `next_grn_number()` and `grn_number_seq`) and `GoodsReceivedNoteItem` (integer ids); partial unique index `GoodsReceivedNote_one_open_per_requisition` (one pending or rejected GRN per IR); CHECKs `GoodsReceivedNote_cancel_check`, `GoodsReceivedNoteItem_quantity_check`; cache triggers |
+| `20261111120000_customer_sea_and_sales_person` | Nullable `Customer.seaRegistrationNumber` and `Customer.salesPersonId` (FK to `User`, SET NULL), after the audit columns like `Role.isSystem` |
+| `20261112090000_quotation_confirmed_by` | Nullable `Quotation.confirmedById` (FK to `User`, SET NULL): who confirmed the payment or credit; after the audit columns like `Role.isSystem` |
 
 Add a row for every new migration.

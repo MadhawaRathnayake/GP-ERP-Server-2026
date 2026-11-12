@@ -27,6 +27,9 @@ migration `20261104074925_sale_quotations` is applied.
   `invoiceCreated` is for the invoice feature; from then on nothing can change (409 `QUOTATION_INVOICED`). The other enum values (`draft`,
   `pending`, `approved`, `rejected`, `accepted`, `declined`, `expired`) are reserved: no route sets them. An approval
   step, if added, gets its own table pointing at `Quotation.id`.
+- **Who confirmed.** `confirmedById` (and `confirmedBy { id, name }` in responses) is the user who last set
+  `paymentConfirmed` or `creditConfirmed`. Cancelling keeps it; reopening to `active` clears it. Quotations imported from
+  the old system have the old confirmer when that person is a user here (`scripts/import-old-quotations.ts`).
 - **Types.** `type` is `sales` (default; every quotation before 20261105140000), `service` or `warranty`. Each type
   has its own optional reference fields; the others must be null (400 on create/update, and the CHECK constraint
   `Quotation_type_fields_check`). Rules in `src/modules/quotations/quotations.types.ts` (+ `.test.ts`):

@@ -103,9 +103,11 @@ model User {
   modifiedStockMovements           StockMovement[]           @relation("StockMovementModifiedBy")
   createdCustomers                 Customer[]                @relation("CustomerCreatedBy")
   modifiedCustomers                Customer[]                @relation("CustomerModifiedBy")
+  salesPersonCustomers             Customer[]                @relation("CustomerSalesPerson")
   createSuppliers                  Supplier[]                @relation("SupplierCreatedBy")
   modifiedSupplier                 Supplier[]                @relation("SupplierModifiedBy")
   salesManagerQuotations           Quotation[]               @relation("QuotationSalesManager")
+  confirmedQuotations              Quotation[]               @relation("QuotationConfirmedBy")
   createdQuotations                Quotation[]               @relation("QuotationCreatedBy")
   modifiedQuotations               Quotation[]               @relation("QuotationModifiedBy")
   createdQuotationItems            QuotationItem[]           @relation("QuotationItemCreatedBy")
@@ -369,39 +371,42 @@ enum CustomerType {
 
 // Ids are CUS000001, CUS000002, … (next_customer_id(), hand-written SQL like next_user_id()).
 model Customer {
-  id              String       @id @default(dbgenerated("next_customer_id()"))
-  code            String
-  type            CustomerType
-  title           String?
-  name            String
-  email           String?
-  phones          String[]     @default([])
-  houseNumber     String?
-  street          String?
-  city            String?
-  district        String?
-  province        String?
-  country         String
-  contactPerson   String?
-  contactPhones   String[]     @default([])
-  vatNumber       String?
-  tinNumber       String?
-  pvNumber        String?
-  isCommissioned  Boolean      @default(false) // gets special offers (large or frequent orders); flagged for sales staff, no price logic
-  isActive        Boolean      @default(true) //last invoice is less than 6months
-  isDormant       Boolean      @default(false) //last invoice is over 18months
-  lastInvoiceDate DateTime?    @db.Timestamptz(3)
-  totalInvoices   Int          @default(0) // set by the system from invoices, like isActive, isDormant and lastInvoiceDate
-  notes           String?
-  quotations      Quotation[]
-  invoices        Invoice[]
-  creator         User?        @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy       String?
-  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
-  modifier        User?        @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy      String?
-  modifiedAt      DateTime?    @db.Timestamptz(3)
-  isDeleted       Boolean      @default(false)
+  id                    String       @id @default(dbgenerated("next_customer_id()"))
+  code                  String
+  type                  CustomerType
+  title                 String?
+  name                  String
+  email                 String?
+  phones                String[]     @default([])
+  houseNumber           String?
+  street                String?
+  city                  String?
+  district              String?
+  province              String?
+  country               String
+  contactPerson         String?
+  contactPhones         String[]     @default([])
+  vatNumber             String?
+  tinNumber             String?
+  pvNumber              String?
+  seaRegistrationNumber String? // Sri Lanka Sustainable Energy Authority registration, e.g. SLSEA/SBS/00309
+  salesPersonId         String?
+  salesPerson           User?        @relation("CustomerSalesPerson", fields: [salesPersonId], references: [id], onDelete: SetNull)
+  isCommissioned        Boolean      @default(false) // gets special offers (large or frequent orders); flagged for sales staff, no price logic
+  isActive              Boolean      @default(true) //last invoice is less than 6months
+  isDormant             Boolean      @default(false) //last invoice is over 18months
+  lastInvoiceDate       DateTime?    @db.Timestamptz(3)
+  totalInvoices         Int          @default(0) // set by the system from invoices, like isActive, isDormant and lastInvoiceDate
+  notes                 String?
+  quotations            Quotation[]
+  invoices              Invoice[]
+  creator               User?        @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy             String?
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  modifier              User?        @relation("CustomerModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy            String?
+  modifiedAt            DateTime?    @db.Timestamptz(3)
+  isDeleted             Boolean      @default(false)
 
   @@index([id])
   @@index([code])
@@ -411,6 +416,7 @@ model Customer {
   @@index([phones], type: Gin)
   @@index([vatNumber])
   @@index([tinNumber])
+  @@index([salesPersonId])
 }
 
 // ─── Purchases ───────────────────────────────────────────────────────────────────
@@ -530,6 +536,8 @@ model Quotation {
   serviceCharge       Decimal?               @db.Decimal(14, 2) // service only: the price, instead of product lines
   serviceTaxRate      Decimal?               @db.Decimal(5, 2) // service only: VAT percent from the settings when the charge was saved
   isPreOrdered        Boolean                @default(false) // sales only
+  confirmedById       String? // who set paymentConfirmed or creditConfirmed; kept when cancelled, cleared when reopened
+  confirmedBy         User?                  @relation("QuotationConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   items               QuotationItem[]
   invoices            Invoice[] // at most one that isn't cancelled (index "Invoice_quotationId_live_key")
   creator             User?                  @relation("QuotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -979,27 +987,27 @@ enum GoodsReceivedNoteStatus {
 // system), the partial unique index GoodsReceivedNote_one_open_per_requisition, CHECKs GoodsReceivedNote_cancel_check
 // and GoodsReceivedNoteItem_quantity_check.
 model GoodsReceivedNote {
-  id                      Int                     @id @default(autoincrement())
-  grnNumber               String                  @unique @default(dbgenerated("next_grn_number()"))
-  internalRequisitionId   Int
-  internalRequisition     InternalRequisition     @relation(fields: [internalRequisitionId], references: [id], onDelete: Restrict)
-  supplierId              String // the PO's supplier (an international IR's own), copied on create; never changes
-  supplier                Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  receivedDate            DateTime                @db.Date // the printed date (the old `date`); today by default, can be chosen
-  supplierInvoiceNumber   String?
-  status                  GoodsReceivedNoteStatus @default(pending)
-  cancelReason            String?
-  canceller               User?                   @relation("GoodsReceivedNoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
-  cancelledBy             String?
-  cancelledAt             DateTime?               @db.Timestamptz(3)
-  items                   GoodsReceivedNoteItem[]
-  creator                 User?                   @relation("GoodsReceivedNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  createdBy               String?
-  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
-  modifier                User?                   @relation("GoodsReceivedNoteModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
-  modifiedBy              String?
-  modifiedAt              DateTime?               @db.Timestamptz(3)
-  isDeleted               Boolean                 @default(false)
+  id                    Int                     @id @default(autoincrement())
+  grnNumber             String                  @unique @default(dbgenerated("next_grn_number()"))
+  internalRequisitionId Int
+  internalRequisition   InternalRequisition     @relation(fields: [internalRequisitionId], references: [id], onDelete: Restrict)
+  supplierId            String // the PO's supplier (an international IR's own), copied on create; never changes
+  supplier              Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  receivedDate          DateTime                @db.Date // the printed date (the old `date`); today by default, can be chosen
+  supplierInvoiceNumber String?
+  status                GoodsReceivedNoteStatus @default(pending)
+  cancelReason          String?
+  canceller             User?                   @relation("GoodsReceivedNoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  cancelledBy           String?
+  cancelledAt           DateTime?               @db.Timestamptz(3)
+  items                 GoodsReceivedNoteItem[]
+  creator               User?                   @relation("GoodsReceivedNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy             String?
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  modifier              User?                   @relation("GoodsReceivedNoteModifiedBy", fields: [modifiedBy], references: [id], onDelete: SetNull)
+  modifiedBy            String?
+  modifiedAt            DateTime?               @db.Timestamptz(3)
+  isDeleted             Boolean                 @default(false)
 
   @@index([internalRequisitionId])
   @@index([supplierId])

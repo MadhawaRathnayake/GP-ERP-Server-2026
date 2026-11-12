@@ -58,6 +58,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "admin:restore": "tsx --conditions=development scripts/restore-admin.ts",
+    "import:old-data": "tsx --conditions=development scripts/import-old-data.ts",
+    "import:old-quotations": "tsx --conditions=development scripts/import-old-quotations.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

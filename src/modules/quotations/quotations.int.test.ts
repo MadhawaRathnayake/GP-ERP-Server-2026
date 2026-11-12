@@ -160,12 +160,16 @@ describe("quotations", () => {
   })
 
   it("lets users set the status, but not invoiceCreated", async () => {
-    expect((await patch(user, id, { status: "paymentConfirmed" })).json().status).toBe("paymentConfirmed")
+    expect((await patch(user, id, { status: "paymentConfirmed" })).json()).toMatchObject({
+      status: "paymentConfirmed",
+      confirmedById: user.id,
+      confirmedBy: { id: user.id },
+    })
     expect((await patch(user, id, { status: "invoiceCreated" })).statusCode).toBe(400)
   })
 
   it("remembers the confirmation a cancelled quotation had", async () => {
-    expect((await patch(user, id, { status: "cancelled" })).json().status).toBe("cancelledAfterPayment")
+    expect((await patch(user, id, { status: "cancelled" })).json()).toMatchObject({ status: "cancelledAfterPayment", confirmedById: user.id })
     expect((await patch(user, id, { status: "cancelled" })).json().status).toBe("cancelledAfterPayment")
     expect((await patch(user, id, { status: "cancelledAfterCredit" })).statusCode).toBe(400)
     expect((await patch(user, id, { status: "paymentConfirmed" })).json().status).toBe("paymentConfirmed")
