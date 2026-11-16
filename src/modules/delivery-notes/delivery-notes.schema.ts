@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { pageQuery, pageResult } from "#http/pagination.js"
-import { quotationType } from "#modules/quotations/quotations.schema.js"
+import { dateOnly, quotationType } from "#modules/quotations/quotations.schema.js"
 
 const userId = z.string().regex(/^USER\d{5,}$/, "Must be a user id like USER00001")
 // Integer ids: anything above 2^31 − 1 can't exist (and would fail in Prisma, not 404).
@@ -35,6 +35,9 @@ export const deliveryNoteSummary = z.object({
   itemIssuerId: z.string().nullable(),
   itemIssuer: party.nullable(),
   issuedAt: z.date().nullable(),
+  isImported: z.boolean().describe("Imported from the old system; an issued one may have no verifier or issuer user"),
+  oldItemVerifierName: z.string().nullable().describe("Imported notes: the verifier's name in the old system"),
+  oldItemIssuerName: z.string().nullable().describe("Imported notes: the issuer's name in the old system"),
   createdBy: z.string().nullable(),
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
@@ -61,9 +64,24 @@ export const deliveryNote = deliveryNoteSummary.extend({
         productId: z.string(),
         description: z.string(),
         quantity: z.number().int(),
+        warrantyMonths: z.number().int(),
+        warrantyEndsAt: dateOnly.nullable().describe("Set when the invoice was finalized (warranty starts on the invoice)"),
         product: z.object({ sku: z.string(), title: z.string(), imageUrl: z.string().nullable() }),
       }),
     ),
+    serialPicks: z
+      .array(
+        z.object({
+          productId: z.string(),
+          serialItem: z.object({
+            id: z.number().int(),
+            serialNumber: z.string(),
+            palletNumber: z.string().nullable(),
+            accessories: z.array(z.object({ serialNumber: z.string(), accessory: z.object({ name: z.string() }) })),
+          }),
+        }),
+      )
+      .describe("The units scanned on the invoice, for its serial-tracked lines"),
   }),
   creator: party.nullable(),
 })

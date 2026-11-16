@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { App } from "#app.js"
 import { db } from "#core/db.js"
-import { cleanupTestUsers, keepUserDropdown, signIn, startApp, type TestUser } from "#test/helpers.js"
+import { cleanupTestUsers, keepUserDropdown, pickDropdownUsers, signIn, startApp, type TestUser } from "#test/helpers.js"
 
 // Uses ERP-DB like every integration test, and uses up a delivery note number. The note is made here directly; that
 // finalizing an invoice makes one is checked in invoices.int.test.ts.
@@ -24,11 +24,8 @@ beforeAll(async () => {
   // This file changes the real ITEM_VERIFIER and ITEM_ISSUER dropdowns; afterAll puts them back.
   restoreVerifiers = await keepUserDropdown("ITEM_VERIFIER")
   restoreIssuers = await keepUserDropdown("ITEM_ISSUER")
-  for (const id of ["ITEM_VERIFIER", "ITEM_ISSUER"]) {
-    const users = { source: "users" as const, userIds: [user.id, other.id] }
-    await db.userDropdown.upsert({ where: { id }, create: { id, ...users }, update: users })
-  }
-  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "Sri Lanka" } })).id
+  for (const code of ["ITEM_VERIFIER", "ITEM_ISSUER"]) await pickDropdownUsers(code, [user.id, other.id])
+  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "LKA" } })).id
   const invoice = await db.invoice.create({
     data: {
       draftNumber: `TEST-${stamp}-draft`,

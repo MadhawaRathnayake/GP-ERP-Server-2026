@@ -55,7 +55,24 @@ const detailInclude = {
           productId: true,
           description: true,
           quantity: true,
+          warrantyMonths: true,
+          warrantyEndsAt: true,
           product: { select: { sku: true, title: true, imageUrl: true } },
+        },
+      },
+      serialPicks: {
+        where: { releasedAt: null, isDeleted: false },
+        orderBy: { id: "asc" },
+        select: {
+          productId: true,
+          serialItem: {
+            select: {
+              id: true,
+              serialNumber: true,
+              palletNumber: true,
+              accessories: { where: { isDeleted: false }, select: { serialNumber: true, accessory: { select: { name: true } } } },
+            },
+          },
         },
       },
     },

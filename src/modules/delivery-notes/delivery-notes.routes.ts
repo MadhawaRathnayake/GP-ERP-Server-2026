@@ -34,7 +34,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/item-verifiers",
     {
       schema: { response: { 200: dropdownUserList } },
-      config: { permission: "DELIVERY_NOTES.SET_VERIFIER", cache: ["UserDropdown", "User"] },
+      config: { permission: "DELIVERY_NOTES.SET_VERIFIER", cache: ["UserDropdown", "UserDropdownUser", "UserDropdownRole", "User"] },
     },
     () => listItemVerifiers(),
   )
@@ -43,7 +43,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/item-issuers",
     {
       schema: { response: { 200: dropdownUserList } },
-      config: { permission: "DELIVERY_NOTES.SET_ISSUER", cache: ["UserDropdown", "User"] },
+      config: { permission: "DELIVERY_NOTES.SET_ISSUER", cache: ["UserDropdown", "UserDropdownUser", "UserDropdownRole", "User"] },
     },
     () => listItemIssuers(),
   )
@@ -54,7 +54,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: deliveryNoteIdParams, response: { 200: deliveryNote } },
       config: {
         permission: "DELIVERY_NOTES.VIEW",
-        cache: ["DeliveryNote", "Invoice", "InvoiceItem", "Customer", "User", "Product"],
+        cache: ["DeliveryNote", "Invoice", "InvoiceItem", "InvoiceSerialItem", "SerialItem", "SerialItemAccessory", "Accessory", "Customer", "User", "Product"],
       },
     },
     (req) => getDeliveryNote(req.params.id),
