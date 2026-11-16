@@ -70,6 +70,14 @@ export function listQuotations({ customerId, salesManagerId, status, type, from,
   )
 }
 
+/**
+ * List rows of just these quotations, e.g. the ones a live `quotation` event named. Deleted ones too (`isDeleted`), so a
+ * client keeping the list can take them out.
+ */
+export function listQuotationsByIds(ids: number[]) {
+  return db.quotation.findMany({ where: { id: { in: ids } }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getQuotation(id: number): Promise<QuotationDetail> {
   const quotation = await db.quotation.findUnique({ where: { id }, include: detailInclude })
   if (!quotation) throw new NotFoundError("Quotation", String(id))

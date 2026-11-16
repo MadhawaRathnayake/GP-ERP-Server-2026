@@ -86,5 +86,7 @@
 | `20261114090200_countries_and_defaults` | `Customer`, `Supplier` and `Setting` `country` → ISO alpha-3 `CHAR(3)` (names in use mapped, e.g. Sri Lanka → `LKA`; stops and lists any other value); `Product.description` nullable with no default, `'N/A'` → NULL |
 | `20261114090300_indexes` | Indexes on the foreign keys that had none and on `Invoice.finalizedAt` / `dueDate`; `(status, id)` replaces `status` on the document tables; `Quotation_type_idx`, `Customer_id_idx`, `Supplier_id_idx` dropped; extension `pg_trgm` and GIN trigram indexes for the `contains` searches (`Customer` code, name, email; `Supplier` name, email; `Product` sku, title) |
 | `20261114100000_serial_item_used_for_repair` | `SerialItemStatus` gets `usedForRepair` (a unit used as a repair part; set by the repairs module, not built yet) |
+| `20261116090000_invoice_change_events` | Live invoices: `notify_invoice_change()` and trigger `Invoice_notify_invoice_change` (after every insert or update, the invoice's id on channel `invoice_change`; [automatic.md](automatic.md#live-updates)) |
+| `20261116100000_quotation_change_events` | Live quotations: `notify_quotation_change()` and trigger `Quotation_notify_quotation_change` (after every insert or update, the quotation's id on channel `quotation_change`) |
 
 Add a row for every new migration.

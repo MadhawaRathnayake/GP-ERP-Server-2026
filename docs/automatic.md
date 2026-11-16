@@ -36,7 +36,20 @@ Things that run without anyone calling them. If something "just works", it's pro
 - If the listener reconnects after losing its connection, it clears the whole cache, since it may have missed changes.
 - A table without the trigger is never cleared: cached responses stay stale until the TTL.
 
-## Live stock
+## Live updates
+
+Browsers keep stock and the invoice and quotation lists live through one stream, `GET /api/v1/events` (`modules/events`), open to
+any signed-in user. Each event reaches only the streams whose user has its permission; the stream reloads its user's
+permissions at every heartbeat, so a role change applies within 25 s.
+
+| Event | Permission | Source |
+|---|---|---|
+| `stock` | `PRODUCTS.VIEW` | live stock, below |
+| `invoice` `{ id }` | `INVOICES.VIEW` | trigger `Invoice_notify_invoice_change` (migration `20261116090000_invoice_change_events`): after every insert or update of an invoice, its id on channel `invoice_change`, read by `modules/invoices/invoices.events.ts`. Clients reload those rows with `GET /api/v1/invoices/by-ids` (not cached: the event can arrive before the cache is cleared). Postgres drops duplicates within a transaction; a bulk import sends one event per invoice |
+| `quotation` `{ id }` | `QUOTATIONS.VIEW` | trigger `Quotation_notify_quotation_change` (migration `20261116100000_quotation_change_events`), the same way as invoices. `GET /api/v1/quotations/by-ids` also returns deleted ones (`isDeleted`), so clients take them out of the list |
+| `resync` | everyone | after db-events reconnects (notifications sent meanwhile are lost): clients reload `GET /api/v1/stock` and the newest invoices and quotations |
+
+### Live stock
 
 Two triggers on `Product` (migration `20261105090000_product_stock_version`, reduced to the one stock column by
 `20261112100000_single_stock`):
@@ -51,13 +64,14 @@ Two triggers on `Product` (migration `20261105090000_product_stock_version`, red
 Then, on every server instance:
 
 - `db-events.plugin.ts` LISTENs on `stock_change` too (`listenTo`, same connection as the cache) and emits it.
-- `modules/stock/stock.events.ts` validates the payload; `stock.routes.ts` sends it as an `event: stock` to every open
-  `GET /api/v1/stock/events` stream. An invalid payload is logged and dropped.
+- `modules/stock/stock.events.ts` validates the payload; `modules/events` sends it as an `event: stock` to every open
+  `GET /api/v1/events` stream whose user has `PRODUCTS.VIEW`. An invalid payload is logged and dropped.
 - After db-events reconnects, every stream gets `event: resync`: notifications sent while it was disconnected are lost,
   so clients reload `GET /api/v1/stock`.
 - Each stream sends a `: ping` comment every 25 s (keeps proxies from dropping it) and first re-checks the session and
-  `PRODUCTS.VIEW` without extending the session. Signed out, deactivated or permission removed → the stream ends
-  within 25 s. A failing check (database down) also ends it; the browser reconnects through the normal access check.
+  reloads the user's permissions, without extending the session. Signed out or deactivated → the stream ends within
+  25 s; a removed permission stops that permission's events. A failing check (database down) also ends it; the browser
+  reconnects through the normal access check.
 - On shutdown (`preClose`) every stream is ended, so the server doesn't wait for them.
 
 ## Document numbers

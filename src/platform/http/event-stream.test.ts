@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify"
 import { afterEach, describe, expect, it } from "vitest"
-import { createEventStreamGroup, openEventStream, type EventStreamOptions } from "./event-stream.js"
+import { createEventStreamGroup, openEventStream, type EventStream, type EventStreamOptions } from "./event-stream.js"
 
 // Real HTTP server and fetch: hijacked streaming responses can't be tested with app.inject().
 
@@ -99,5 +99,27 @@ describe("openEventStream", () => {
     app = undefined
     await readUntil(res.body!)
     expect(group.size).toBe(0)
+  })
+})
+
+describe("createEventStreamGroup", () => {
+  /** A stream that records what it was sent. */
+  const fakeStream = () => {
+    const sent: string[] = []
+    const stream: EventStream = { send: (event) => void sent.push(event), close: () => undefined, onClose: () => undefined }
+    return { stream, sent }
+  }
+
+  it("sends to every stream, or only to those the filter accepts", () => {
+    const group = createEventStreamGroup()
+    const a = fakeStream()
+    const b = fakeStream()
+    group.add(a.stream)
+    group.add(b.stream)
+
+    group.broadcast("resync", {})
+    group.broadcast("invoice", { id: 1 }, (stream) => stream === a.stream)
+    expect(a.sent).toEqual(["resync", "invoice"])
+    expect(b.sent).toEqual(["resync"])
   })
 })

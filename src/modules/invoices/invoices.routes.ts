@@ -6,8 +6,10 @@ import {
   createInvoiceBody,
   invoice,
   invoiceIdParams,
+  invoiceIdsQuery,
   invoicePage,
   invoiceSerialParams,
+  invoiceSummaryList,
   listInvoicesQuery,
   scanSerialBody,
   scanSerialResult,
@@ -21,6 +23,7 @@ import {
   finalizeInvoice,
   getInvoice,
   listInvoices,
+  listInvoicesByIds,
   listSalesManagers,
   updateInvoice,
 } from "./invoices.service.js"
@@ -34,6 +37,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "INVOICES.VIEW", cache: ["Invoice", "Quotation", "Customer", "User"] },
     },
     (req) => listInvoices(req.query),
+  )
+
+  // The rows a live `invoice` event names (GET /api/v1/events), so a client keeping the whole list reloads only those.
+  // Not cached: the event can arrive before the Invoice cache is cleared, and a cached copy would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: invoiceIdsQuery, response: { 200: invoiceSummaryList } },
+      config: { permission: "INVOICES.VIEW" },
+    },
+    (req) => listInvoicesByIds(req.query.ids),
   )
 
   // For the sales manager dropdown of an invoice made without a quotation (Admin → Dropdowns).

@@ -58,7 +58,8 @@ afterAll(async () => {
 })
 
 describe("stock", () => {
-  it.each(["/api/v1/stock", "/api/v1/stock/events"])("%s requires PRODUCTS.VIEW", async (url) => {
+  it("requires PRODUCTS.VIEW", async () => {
+    const url = "/api/v1/stock"
     const res = await app.inject({ url, headers: { cookie: outsider.cookie } })
     expect(res.statusCode).toBe(403)
     expect(res.json().error.details).toEqual({ permission: "PRODUCTS.VIEW" })
@@ -94,9 +95,9 @@ describe("stock", () => {
     expect(res.json().stockVersion).toBe(before.stockVersion)
   })
 
-  it("streams stock changes to a signed-in browser", async () => {
+  it("streams stock changes to a signed-in browser (GET /api/v1/events)", async () => {
     const address = await app.listen({ port: 0, host: "127.0.0.1" })
-    const res = await fetch(`${address}/api/v1/stock/events`, { headers: { cookie: user.cookie } })
+    const res = await fetch(`${address}/api/v1/events`, { headers: { cookie: user.cookie } })
     expect(res.status).toBe(200)
     expect(res.headers.get("content-type")).toBe("text/event-stream; charset=utf-8")
 

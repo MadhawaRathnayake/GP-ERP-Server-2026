@@ -137,6 +137,17 @@ export const listQuotationsQuery = pageQuery.extend({
   includeDeleted: z.stringbool().default(false).describe("Include deleted quotations"),
 })
 
+export const quotationIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]d*(,[1-9]d*)*$/, "Comma-separated quotation ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated quotation ids, at most 100"),
+})
+
+export const quotationSummaryList = z.array(quotationSummary)
+
 const amount = money.refine((value) => value.gte(0), "Must be 0 or more")
 
 // What a client sends for a line. unitCost, taxRate and the amounts are always set by the server. Invoice lines too.

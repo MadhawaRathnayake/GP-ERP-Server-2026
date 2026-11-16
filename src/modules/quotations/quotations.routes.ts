@@ -1,12 +1,22 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { actorOf } from "#security/auth.plugin.js"
 import { dropdownUserList } from "#modules/dropdowns/dropdowns.schema.js"
-import { createQuotationBody, listQuotationsQuery, quotation, quotationIdParams, quotationPage, updateQuotationBody } from "./quotations.schema.js"
+import {
+  createQuotationBody,
+  listQuotationsQuery,
+  quotation,
+  quotationIdParams,
+  quotationIdsQuery,
+  quotationPage,
+  quotationSummaryList,
+  updateQuotationBody,
+} from "./quotations.schema.js"
 import {
   createQuotation,
   deleteQuotation,
   getQuotation,
   listQuotations,
+  listQuotationsByIds,
   listSalesManagers,
   updateQuotation,
 } from "./quotations.service.js"
@@ -19,6 +29,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "QUOTATIONS.VIEW", cache: ["Quotation", "Customer", "User"] },
     },
     (req) => listQuotations(req.query),
+  )
+
+  // The rows a live `quotation` event names (GET /api/v1/events), deleted ones included, so a client keeping the whole
+  // list reloads only those. Not cached: the event can arrive before the Quotation cache is cleared, and a cached copy
+  // would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: quotationIdsQuery, response: { 200: quotationSummaryList } },
+      config: { permission: "QUOTATIONS.VIEW" },
+    },
+    (req) => listQuotationsByIds(req.query.ids),
   )
 
   // For the sales manager dropdown; which users it offers is set in Admin → Dropdowns.

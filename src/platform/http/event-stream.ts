@@ -106,8 +106,9 @@ export function createEventStreamGroup() {
       streams.add(stream)
       stream.onClose(() => streams.delete(stream))
     },
-    broadcast(event: string, data: unknown) {
-      for (const stream of streams) stream.send(event, data)
+    /** Sends to every stream, or only to those `to` accepts (e.g. the users allowed to see the event). */
+    broadcast(event: string, data: unknown, to?: (stream: EventStream) => boolean) {
+      for (const stream of streams) if (!to || to(stream)) stream.send(event, data)
     },
     /** Ends every stream, e.g. on shutdown: open streams would keep the server from closing. */
     closeAll() {

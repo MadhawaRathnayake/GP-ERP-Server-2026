@@ -68,12 +68,12 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/accessories", "/api/v1/serial-items", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/goods-received-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/countries", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/accessories", "/api/v1/serial-items", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/goods-received-notes", "/api/v1/stock", "/api/v1/events", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/countries", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
 
-  it.each(["/api/v1/products", "/api/v1/customers", "/api/v1/users", "/api/v1/settings", "/api/v1/countries", "/api/v1/auth/me"])("%s needs a session by default", async (url) => {
+  it.each(["/api/v1/products", "/api/v1/customers", "/api/v1/users", "/api/v1/settings", "/api/v1/countries", "/api/v1/events", "/api/v1/auth/me"])("%s needs a session by default", async (url) => {
     const res = await app.inject({ url })
     expect(res.statusCode).toBe(401)
     expect(res.json().error).toMatchObject({ code: "UNAUTHENTICATED", requestId: expect.any(String) })
@@ -102,7 +102,6 @@ describe("app wiring", () => {
     ["GET", "/api/v1/serial-items/1", "SERIAL_ITEMS.VIEW"],
     ["PATCH", "/api/v1/serial-items/1", "SERIAL_ITEMS.EDIT"],
     ["GET", "/api/v1/stock", "PRODUCTS.VIEW"],
-    ["GET", "/api/v1/stock/events", "PRODUCTS.VIEW"],
     ["GET", "/api/v1/categories", "CATEGORY.VIEW"],
     ["GET", `/api/v1/categories/${aCategoryId}`, "CATEGORY.VIEW"],
     ["POST", "/api/v1/categories", "CATEGORY.CREATE"],
@@ -119,12 +118,14 @@ describe("app wiring", () => {
     ["PATCH", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.EDIT"],
     ["DELETE", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.DELETE"],
     ["GET", "/api/v1/quotations", "QUOTATIONS.VIEW"],
+    ["GET", "/api/v1/quotations/by-ids?ids=1", "QUOTATIONS.VIEW"],
     ["GET", "/api/v1/quotations/sales-managers", "QUOTATIONS.VIEW"],
     ["GET", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.VIEW"],
     ["POST", "/api/v1/quotations", "QUOTATIONS.CREATE"],
     ["PATCH", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.VIEW"],
     ["DELETE", `/api/v1/quotations/${aQuotationId}`, "QUOTATIONS.DELETE"],
     ["GET", "/api/v1/invoices", "INVOICES.VIEW"],
+    ["GET", "/api/v1/invoices/by-ids?ids=1", "INVOICES.VIEW"],
     ["GET", "/api/v1/invoices/sales-managers", "INVOICES.CREATE_DIRECT"],
     ["GET", `/api/v1/invoices/${anInvoiceId}`, "INVOICES.VIEW"],
     ["POST", "/api/v1/invoices", "INVOICES.CREATE"],

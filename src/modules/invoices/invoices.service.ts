@@ -116,6 +116,11 @@ export function listInvoices({ status, type, customerId, quotationId, ...page }:
   )
 }
 
+/** List rows of just these invoices, e.g. the ones a live `invoice` event named. */
+export function listInvoicesByIds(ids: number[]) {
+  return db.invoice.findMany({ where: { id: { in: ids }, isDeleted: false }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getInvoice(id: number) {
   const invoice = await db.invoice.findUnique({ where: { id }, include: detailInclude })
   if (!invoice) throw new NotFoundError("Invoice", String(id))

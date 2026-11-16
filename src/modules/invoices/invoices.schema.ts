@@ -168,6 +168,17 @@ export const listInvoicesQuery = pageQuery.extend({
   quotationId: intId.optional(),
 })
 
+export const invoiceIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated invoice ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated invoice ids, at most 100"),
+})
+
+export const invoiceSummaryList = z.array(invoiceSummary)
+
 const amount = money.refine((value) => value.gte(0), "Must be 0 or more")
 const referenceId = (what: string) => z.string().trim().min(1).max(100).nullable().describe(`${what} (module not built yet: not checked)`)
 
