@@ -1,37 +1,35 @@
-import {
-  Prisma,
-  type InvoicePaymentMethod,
-  type InvoiceStatus,
-  type QuotationType,
-  type StockBucket,
-} from "#generated/prisma/client.js"
+import { Prisma, type InvoicePaymentMethod, type InvoiceStatus, type SalesDocumentType } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
 import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import { dropdownUsers, isDropdownUser } from "#modules/dropdowns/dropdowns.service.js"
 import { lineAmounts, quotationTotals, roundMoney, serviceTotals } from "#modules/quotations/quotations.amounts.js"
+import { referenceNumbers } from "#modules/quotations/quotations.references.js"
 import type { QuotationItemInput } from "#modules/quotations/quotations.schema.js"
-import { getSettings, type Settings } from "#modules/settings/settings.service.js"
+import { getSettings, today, type Settings } from "#modules/settings/settings.service.js"
+import { changeStock } from "#modules/stock/stock.service.js"
 import {
   InsufficientStockError,
   InvoiceCancelledError,
   InvoiceExistsError,
+  InvoiceImportedError,
   InvoiceNotDraftError,
   QuotationNotConfirmedError,
 } from "./invoices.errors.js"
-import { contentProblems, paymentProblems, quantitiesByProduct, stockShortages, type StockNeed } from "./invoices.rules.js"
+import { addMonths, contentProblems, paymentProblems, quantitiesByProduct, stockShortages, type StockNeed } from "./invoices.rules.js"
+import { releaseAllPicks, releasePicksBeyondLines, returnSoldUnits, sellPickedUnits } from "./invoices.serials.js"
 import type { CreateDirectInvoiceBody, CreateInvoiceBody, ListInvoicesQuery, UpdateInvoiceBody } from "./invoices.schema.js"
 
 // An invoice is made as a draft from a confirmed quotation (or, with INVOICES.CREATE_DIRECT, without one). The header
 // is the quotation's; the lines start as the quotation's and are priced like quotation lines (quotations.amounts.ts),
 // with the current product cost and VAT rate, so the invoice keeps its own prices next to the quotation's. A draft can
-// be edited; finalizing numbers it and moves its stock in hand to in transit; cancelling moves it back (finalized only)
+// be edited; finalizing numbers it and takes its stock out of stock in hand; cancelling puts it back (finalized only)
 // and gives the quotation back the status it had. Nothing can be invoiced beyond the stock in hand. Finalizing a sales
 // or warranty invoice also makes its draft delivery note (modules/delivery-notes); cancelling cancels the note.
 //
-// NOT BUILT YET: delivering a note (the old system's "Delivered" took the stock out of in transit, and changed how a
-// cancel gave it back), serial numbers per line, and the troubleshoot/repair status updates. Hook them into
+// Serial-tracked lines need a scanned unit for every unit before finalizing (invoices.serials.ts); finalizing sells
+// them and starts each line's warranty. NOT BUILT YET: the troubleshoot/repair status updates. Hook them into
 // finalizeInvoice and cancelInvoice when those modules exist.
 
 const summaryInclude = {
@@ -64,7 +62,23 @@ const detailInclude = {
   items: {
     where: { isDeleted: false },
     orderBy: { lineNo: "asc" },
-    include: { product: { select: { sku: true, title: true, description: true, imageUrl: true, warrantyMonths: true } } },
+    include: { product: { select: { sku: true, title: true, description: true, imageUrl: true, warrantyMonths: true, trackingType: true } } },
+  },
+  // The units scanned for the serial-tracked lines (picked on the draft, sold once finalized).
+  serialPicks: {
+    where: { releasedAt: null, isDeleted: false },
+    orderBy: { id: "asc" },
+    select: {
+      productId: true,
+      serialItem: {
+        select: {
+          id: true,
+          serialNumber: true,
+          palletNumber: true,
+          accessories: { where: { isDeleted: false }, select: { serialNumber: true, accessory: { select: { name: true } } } },
+        },
+      },
+    },
   },
   quotation: {
     select: {
@@ -140,7 +154,9 @@ export async function createInvoice({ quotationId, items, ...data }: CreateInvoi
         repairReceiveNoteId: quotation.repairReceiveNoteId,
         troubleshootId: quotation.troubleshootId,
         oldInvoiceId: quotation.oldInvoiceId,
-        oldSerialNumberId: quotation.oldSerialNumberId,
+        oldInvoiceNumber: quotation.oldInvoiceNumber,
+        oldSerialItemId: quotation.oldSerialItemId,
+        oldSerialNumber: quotation.oldSerialNumber,
         productModel: quotation.productModel,
         paymentTerms: quotation.paymentTerms,
         deliveryLocation: quotation.deliveryLocation,
@@ -172,6 +188,7 @@ export async function createDirectInvoice({ items, ...data }: CreateDirectInvoic
     const invoice = await tx.invoice.create({
       data: {
         ...data,
+        ...(await referenceNumbers(data, tx)),
         draftNumber: await nextNumber(tx, "draft", settings, actor),
         ...pricing(data.type, data.serviceCharge, lines, settings.vatRate),
         createdBy: actor.id,
@@ -212,6 +229,7 @@ export async function updateInvoice(id: number, { items, ...data }: UpdateInvoic
     if (lines) {
       await tx.invoiceItem.updateMany({ where: { invoiceId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
       await tx.invoiceItem.createMany({ data: lines.map((line) => ({ ...line, invoiceId: id, createdBy: actor.id })) })
+      await releasePicksBeyondLines(tx, id, lines, actor)
     }
     const repriced = lines !== undefined || data.serviceCharge !== undefined
     await tx.invoice.update({
@@ -223,7 +241,8 @@ export async function updateInvoice(id: number, { items, ...data }: UpdateInvoic
 }
 
 /**
- * Gives a draft its invoice number and moves its stock from in hand to in transit. A sales or warranty invoice also
+ * Gives a draft its invoice number and takes its stock out of stock in hand. Every serial-tracked line needs its units
+ * scanned (409 SERIALS_MISSING); they are sold on it. Each line's warranty starts today. A sales or warranty invoice also
  * gets its draft delivery note (a service invoice has nothing to deliver).
  */
 export async function finalizeInvoice(id: number, actor: Actor) {
@@ -232,7 +251,14 @@ export async function finalizeInvoice(id: number, actor: Actor) {
     await tx.$executeRaw`SELECT 1 FROM "Invoice" WHERE id = ${id} FOR UPDATE`
     const invoice = await tx.invoice.findUnique({
       where: { id },
-      select: { status: true, type: true, items: { where: { isDeleted: false }, select: { productId: true, quantity: true } } },
+      select: {
+        status: true,
+        type: true,
+        items: {
+          where: { isDeleted: false },
+          select: { id: true, productId: true, quantity: true, warrantyMonths: true, product: { select: { sku: true, trackingType: true } } },
+        },
+      },
     })
     if (!invoice) throw new NotFoundError("Invoice", String(id))
     if (invoice.status !== "draft") throw new InvoiceNotDraftError(id)
@@ -241,7 +267,16 @@ export async function finalizeInvoice(id: number, actor: Actor) {
     const needs = quantitiesByProduct(invoice.items)
     await lockProducts(tx, needs)
     await assertStock(needs, tx)
-    await moveStock(tx, needs, "inHand", "inTransit", invoiceNumber, "Invoice finalized", actor)
+    await sellPickedUnits(tx, id, invoiceNumber, invoice.items, actor)
+    await changeStock(tx, signed(needs, -1), { invoiceId: id, reference: invoiceNumber, remarks: "Invoice finalized" }, actor)
+
+    const day = today(settings.timezone)
+    for (const item of invoice.items) {
+      await tx.invoiceItem.update({
+        where: { id: item.id },
+        data: { warrantyEndsAt: item.warrantyMonths > 0 ? addMonths(day, item.warrantyMonths) : null },
+      })
+    }
 
     const now = new Date()
     await tx.invoice.update({
@@ -257,8 +292,8 @@ export async function finalizeInvoice(id: number, actor: Actor) {
 const cancelledStatuses: InvoiceStatus[] = ["cancelled", "cancelledAfterFinalized"]
 
 /**
- * Cancels a draft (→ cancelled) or a finalized invoice (→ cancelledAfterFinalized). A finalized one's stock goes back
- * from in transit to in hand, and its delivery note is cancelled. The quotation gets back the status it had before it was invoiced, so it can be invoiced
+ * Cancels a draft (→ cancelled; its scanned units are released) or a finalized invoice (→ cancelledAfterFinalized; its
+ * stock and its units go back into stock), and its delivery note. The quotation gets back the status it had before it was invoiced, so it can be invoiced
  * again.
  */
 export async function cancelInvoice(id: number, actor: Actor) {
@@ -269,6 +304,7 @@ export async function cancelInvoice(id: number, actor: Actor) {
       select: {
         status: true,
         invoiceNumber: true,
+        isImported: true,
         quotationId: true,
         quotationStatusBefore: true,
         items: { where: { isDeleted: false }, select: { productId: true, quantity: true } },
@@ -276,11 +312,15 @@ export async function cancelInvoice(id: number, actor: Actor) {
     })
     if (!invoice) throw new NotFoundError("Invoice", String(id))
     if (cancelledStatuses.includes(invoice.status)) throw new InvoiceCancelledError(id)
+    if (invoice.isImported) throw new InvoiceImportedError(id)
 
     if (invoice.status === "finalized") {
       const needs = quantitiesByProduct(invoice.items)
       await lockProducts(tx, needs)
-      await moveStock(tx, needs, "inTransit", "inHand", invoice.invoiceNumber, "Invoice cancelled", actor)
+      await changeStock(tx, needs, { invoiceId: id, reference: invoice.invoiceNumber, remarks: "Invoice cancelled" }, actor)
+      await returnSoldUnits(tx, id, invoice.invoiceNumber, actor)
+    } else {
+      await releaseAllPicks(tx, id, actor)
     }
     const now = new Date()
     await tx.deliveryNote.updateMany({
@@ -312,10 +352,14 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
   const productIds = [...new Set(items.map((item) => item.productId))]
   const products = await db.product.findMany({
     where: { id: { in: productIds } },
-    select: { id: true, title: true, price: true, cost: true, isDeleted: true },
+    select: { id: true, sku: true, title: true, price: true, cost: true, warrantyMonths: true, trackingType: true, isDeleted: true },
   })
   const byId = new Map(products.map((product) => [product.id, product]))
   const taxRate = new Prisma.Decimal(vatRate)
+  // A serial-tracked product is on one line, so each scanned unit belongs to exactly one line.
+  const serialProducts = items.map((item) => byId.get(item.productId)).filter((product) => product?.trackingType === "serial")
+  const twice = serialProducts.find((product, index) => serialProducts.indexOf(product) !== index)
+  if (twice) throw new BadRequestError(`${twice.sku} is tracked by serial number: put all of it on one line`)
 
   return items.map((item, index) => {
     const lineNo = index + 1
@@ -335,6 +379,7 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
       productId: product.id,
       description: item.description ?? product.title,
       unitCost: product.cost,
+      warrantyMonths: product.warrantyMonths,
       ...linePricing,
       ...amounts,
     }
@@ -342,7 +387,7 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
 }
 
 /** The totals, and the service VAT rate: from the service charge on a service invoice, from the lines otherwise. */
-function pricing(type: QuotationType, serviceCharge: Prisma.Decimal | null, lines: Parameters<typeof quotationTotals>[0], vatRate: number) {
+function pricing(type: SalesDocumentType, serviceCharge: Prisma.Decimal | null, lines: Parameters<typeof quotationTotals>[0], vatRate: number) {
   if (type === "service" && serviceCharge) {
     const taxRate = new Prisma.Decimal(vatRate)
     return { ...serviceTotals(serviceCharge, taxRate), serviceTaxRate: taxRate }
@@ -351,7 +396,7 @@ function pricing(type: QuotationType, serviceCharge: Prisma.Decimal | null, line
 }
 
 function assertRules(
-  type: QuotationType,
+  type: SalesDocumentType,
   lineCount: number,
   serviceCharge: Prisma.Decimal | null,
   method: InvoicePaymentMethod | null,
@@ -387,35 +432,9 @@ async function lockProducts(tx: Prisma.TransactionClient, needs: readonly StockN
   await tx.$queryRaw`SELECT id FROM "Product" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`
 }
 
-const STOCK_COLUMNS = { inHand: "stockInHand", inTransit: "stockInTransit" } as const
-
-/** Moves each quantity from one stock column to another and records both changes as StockMovement rows. */
-async function moveStock(
-  tx: Prisma.TransactionClient,
-  needs: readonly StockNeed[],
-  from: keyof typeof STOCK_COLUMNS,
-  to: keyof typeof STOCK_COLUMNS,
-  reference: string | null,
-  remarks: string,
-  actor: Actor,
-) {
-  for (const { productId, quantity } of needs) {
-    const product = await tx.product.update({
-      where: { id: productId },
-      data: { [STOCK_COLUMNS[from]]: { decrement: quantity }, [STOCK_COLUMNS[to]]: { increment: quantity } },
-      select: { stockInHand: true, stockInTransit: true },
-    })
-    const movement = (bucket: StockBucket & keyof typeof STOCK_COLUMNS, signed: number) => ({
-      productId,
-      bucket,
-      quantity: signed,
-      balanceAfter: product[STOCK_COLUMNS[bucket]],
-      reference,
-      remarks,
-      createdBy: actor.id,
-    })
-    await tx.stockMovement.createMany({ data: [movement(from, -quantity), movement(to, quantity)] })
-  }
+/** The needs as stock taken out (-1) or put back (+1). */
+function signed(needs: readonly StockNeed[], sign: -1 | 1) {
+  return needs.map(({ productId, quantity }) => ({ productId, quantity: sign * quantity }))
 }
 
 /**

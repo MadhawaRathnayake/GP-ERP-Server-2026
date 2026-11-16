@@ -1,4 +1,4 @@
-import type { InvoicePaymentMethod, QuotationType } from "#generated/prisma/client.js"
+import type { InvoicePaymentMethod, SalesDocumentType } from "#generated/prisma/client.js"
 
 // Plain rules with no database access, so invoices.rules.test.ts can check them directly. The type rules (which
 // reference fields each type has) are the quotations' (quotations.types.ts); these are the ones that differ.
@@ -10,7 +10,7 @@ export interface InvoiceContent {
 }
 
 /** Why the content doesn't fit the type, as { field: message }. Empty when it does. */
-export function contentProblems(type: QuotationType, { lineCount, hasServiceCharge }: InvoiceContent) {
+export function contentProblems(type: SalesDocumentType, { lineCount, hasServiceCharge }: InvoiceContent) {
   const problems: Record<string, string> = {}
   if (type === "service") {
     if (lineCount > 0) problems.items = "A service invoice has no product lines"
@@ -23,7 +23,7 @@ export function contentProblems(type: QuotationType, { lineCount, hasServiceChar
 }
 
 /** Why the payment fields don't fit, as { field: message }. A warranty invoice may have no payment method. */
-export function paymentProblems(type: QuotationType, method: InvoicePaymentMethod | null, details: string | null) {
+export function paymentProblems(type: SalesDocumentType, method: InvoicePaymentMethod | null, details: string | null) {
   const problems: Record<string, string> = {}
   if (!method && type !== "warranty") problems.paymentMethod = "Choose the payment method"
   if (details && method !== "cheque" && method !== "bankTransfer") {
@@ -61,4 +61,12 @@ export function stockShortages(needs: readonly StockNeed[], levels: readonly Sto
     const inHand = level?.stockInHand ?? 0
     return quantity > inHand ? [{ productId, sku: level?.sku ?? productId, needed: quantity, inHand }] : []
   })
+}
+
+/** The date `months` later; a day the month doesn't have becomes its last (31 Jan + 1 month → 28/29 Feb). */
+export function addMonths(day: Date, months: number) {
+  const target = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + months, 1))
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+  target.setUTCDate(Math.min(day.getUTCDate(), lastDay))
+  return target
 }

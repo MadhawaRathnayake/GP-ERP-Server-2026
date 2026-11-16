@@ -15,7 +15,7 @@ const stamp = Date.now()
 
 beforeAll(async () => {
   app = await startApp()
-  user = await signIn(app, ["INVOICES.VIEW", "INVOICES.CREATE", "INVOICES.EDIT", "INVOICES.FINALIZE", "INVOICES.CANCEL"])
+  user = await signIn(app, ["INVOICES.VIEW", "INVOICES.CREATE", "INVOICES.EDIT", "INVOICES.ADD_SERIALS", "INVOICES.FINALIZE", "INVOICES.CANCEL"])
   viewer = await signIn(app, ["INVOICES.VIEW"])
   // Test rows' names and codes start with TEST-, so afterAll can remove them.
   const categoryId = (await db.category.create({ data: { name: `TEST-${stamp}` } })).id
@@ -33,7 +33,7 @@ beforeAll(async () => {
       },
     })
   ).id
-  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "Sri Lanka" } })).id
+  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "LKA" } })).id
   const quotation = await db.quotation.create({
     data: {
       customerId,
@@ -61,14 +61,18 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  const units = { serialItem: { product: { sku: { startsWith: `TEST-${stamp}` } } } }
+  await db.invoiceSerialItem.deleteMany({ where: { invoice: { customerId } } })
+  await db.serialItemMovement.deleteMany({ where: units })
+  await db.serialItem.deleteMany({ where: { product: { sku: { startsWith: `TEST-${stamp}` } } } })
   await db.deliveryNote.deleteMany({ where: { invoice: { customerId } } })
   await db.invoiceItem.deleteMany({ where: { invoice: { customerId } } })
   await db.invoice.deleteMany({ where: { customerId } })
   await db.quotationItem.deleteMany({ where: { quotation: { customerId } } })
   await db.quotation.deleteMany({ where: { customerId } })
-  await db.stockMovement.deleteMany({ where: { productId } })
+  await db.stockMovement.deleteMany({ where: { product: { sku: { startsWith: `TEST-${stamp}` } } } })
   await db.customer.deleteMany({ where: { code: `TEST-${stamp}` } })
-  await db.product.deleteMany({ where: { sku: `TEST-${stamp}` } })
+  await db.product.deleteMany({ where: { sku: { startsWith: `TEST-${stamp}` } } })
   await db.category.deleteMany({ where: { name: `TEST-${stamp}` } })
   await cleanupTestUsers()
   await app.close()
@@ -77,7 +81,7 @@ afterAll(async () => {
 const post = (who: TestUser, url: string, payload: object = {}) =>
   app.inject({ method: "POST", url: `/api/v1/invoices${url}`, headers: { cookie: who.cookie }, payload })
 const line = (quantity: number, unitPrice = 900) => ({ productId, quantity, unitPrice })
-const stock = async () => db.product.findUniqueOrThrow({ where: { id: productId }, select: { stockInHand: true, stockInTransit: true } })
+const stock = async () => db.product.findUniqueOrThrow({ where: { id: productId }, select: { stockInHand: true } })
 
 describe("invoices", () => {
   let id: number
@@ -111,11 +115,11 @@ describe("invoices", () => {
     expect(res.json().error.code).toBe("INVOICE_EXISTS")
   })
 
-  it("finalizes: numbers it and moves the stock in hand to in transit", async () => {
+  it("finalizes: numbers it and takes the stock out of stock in hand", async () => {
     const res = await post(user, `/${id}/finalize`)
     expect(res.statusCode).toBe(200)
     expect(res.json().invoiceNumber).toMatch(/^\d{2}[A-Z]{3}_[A-Z0-9]+_\d+$/)
-    expect(await stock()).toEqual({ stockInHand: 3, stockInTransit: 2 })
+    expect(await stock()).toEqual({ stockInHand: 3 })
     expect(res.json().deliveryNote).toMatchObject({ status: "draft", deliveryNoteNumber: expect.stringMatching(/^GPDN-d+$/) })
     const edit = await app.inject({ method: "PATCH", url: `/api/v1/invoices/${id}`, headers: { cookie: user.cookie }, payload: { notes: "x" } })
     expect(edit.json().error.code).toBe("INVOICE_NOT_DRAFT")
@@ -126,7 +130,91 @@ describe("invoices", () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().status).toBe("cancelledAfterFinalized")
     expect(res.json().deliveryNote.status).toBe("cancelled")
-    expect(await stock()).toEqual({ stockInHand: 5, stockInTransit: 0 })
+    expect(await stock()).toEqual({ stockInHand: 5 })
     expect((await db.quotation.findUniqueOrThrow({ where: { id: quotationId } })).status).toBe("paymentConfirmed")
+  })
+})
+
+describe("serial numbers on invoices", () => {
+  let serialProductId: string
+  let id: number
+  const serial = (n: number) => `TEST-INV-${stamp}-${n}`
+  const scan = (code: string) => post(user, `/${id}/serials/scan`, { code })
+
+  beforeAll(async () => {
+    const product = await db.product.findUniqueOrThrow({ where: { id: productId }, select: { categoryId: true } })
+    serialProductId = (
+      await db.product.create({
+        data: { sku: `TEST-${stamp}-SN`, title: "Inverter", categoryId: product.categoryId, warrantyMonths: 60, trackingType: "serial", price: 500, stockInHand: 3 },
+      })
+    ).id
+    for (const n of [1, 2, 3]) {
+      await db.serialItem.create({ data: { productId: serialProductId, serialNumber: serial(n), palletNumber: n < 3 ? `TEST-PAL-${stamp}` : null } })
+    }
+    const quotation = await db.quotation.create({
+      data: { customerId, salesManagerId: user.id, quotationDate: new Date(), status: "paymentConfirmed", grandTotal: 1000 },
+    })
+    const draft = await post(user, "", {
+      quotationId: quotation.id,
+      paymentMethod: "cash",
+      dueDate: "2026-12-01",
+      items: [{ productId: serialProductId, quantity: 2, unitPrice: 500 }],
+    })
+    expect(draft.statusCode).toBe(201)
+    id = draft.json().id
+    expect(draft.json().items[0]).toMatchObject({ warrantyMonths: 60, warrantyEndsAt: null })
+  })
+
+  it("refuses to put a serial-tracked product on two lines", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/invoices/${id}`,
+      headers: { cookie: user.cookie },
+      payload: { items: [{ productId: serialProductId, quantity: 1 }, { productId: serialProductId, quantity: 1 }] },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("refuses to finalize before every unit is scanned", async () => {
+    const res = await post(user, `/${id}/finalize`)
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toMatchObject({ code: "SERIALS_MISSING", details: { lines: [{ quantity: 2, scanned: 0 }] } })
+  })
+
+  it("scans a unit by its serial, ignoring case, and refuses it twice or an unknown code", async () => {
+    const res = await scan(serial(1).toLowerCase())
+    expect(res.json()).toEqual({ added: [{ serialItemId: expect.any(Number), serialNumber: serial(1), sku: `TEST-${stamp}-SN` }], skipped: 0 })
+    expect((await scan(serial(1))).json().error.code).toBe("SERIAL_NOT_AVAILABLE")
+    expect((await scan("TEST-NOPE")).json().error.code).toBe("SERIAL_NOT_FOUND")
+  })
+
+  it("scans a pallet: adds its units the line still needs, skips the rest", async () => {
+    const res = await scan(`TEST-PAL-${stamp}`)
+    expect(res.json()).toMatchObject({ added: [{ serialNumber: serial(2) }], skipped: 1 })
+    expect((await scan(serial(3))).json().error.message).toMatch(/All 2 of/)
+  })
+
+  it("takes a wrong scan off again", async () => {
+    const unit = await db.serialItem.findFirstOrThrow({ where: { serialNumber: serial(2) } })
+    const res = await app.inject({ method: "DELETE", url: `/api/v1/invoices/${id}/serials/${unit.id}`, headers: { cookie: user.cookie } })
+    expect(res.statusCode).toBe(204)
+    expect((await scan(serial(3))).json().added).toHaveLength(1)
+  })
+
+  it("finalizes: sells the scanned units, takes the stock and starts the warranty", async () => {
+    const res = await post(user, `/${id}/finalize`)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items[0].warrantyEndsAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(res.json().serialPicks.map((pick: { serialItem: { serialNumber: string } }) => pick.serialItem.serialNumber)).toEqual([serial(1), serial(3)])
+    const units = await db.serialItem.findMany({ where: { productId: serialProductId }, orderBy: { serialNumber: "asc" } })
+    expect(units.map((unit) => [unit.status, unit.invoiceId])).toEqual([["sold", id], ["inStock", null], ["sold", id]])
+    expect((await db.product.findUniqueOrThrow({ where: { id: serialProductId } })).stockInHand).toBe(1)
+  })
+
+  it("cancels: the units go back into stock", async () => {
+    const res = await post(user, `/${id}/cancel`)
+    expect(res.json().serialPicks).toEqual([])
+    expect(await db.serialItem.count({ where: { productId: serialProductId, status: "inStock" } })).toBe(3)
+    expect((await db.product.findUniqueOrThrow({ where: { id: serialProductId } })).stockInHand).toBe(3)
   })
 })

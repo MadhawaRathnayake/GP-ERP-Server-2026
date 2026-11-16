@@ -8,6 +8,7 @@ import {
   quotationItemInput,
   quotationStatus,
   quotationType,
+  referenceLink,
 } from "#modules/quotations/quotations.schema.js"
 import { fieldsNotAllowed } from "#modules/quotations/quotations.types.js"
 import { deliveryNoteStatus } from "#modules/delivery-notes/delivery-notes.schema.js"
@@ -35,9 +36,10 @@ export const invoiceItem = z.object({
   product: z.object({
     sku: z.string(),
     title: z.string(),
-    description: z.string(),
+    description: z.string().nullable(),
     imageUrl: z.string().nullable(),
     warrantyMonths: z.number().int(),
+    trackingType: z.enum(["quantity", "serial"]),
   }),
   description: z.string(),
   quantity: z.number().int(),
@@ -50,6 +52,19 @@ export const invoiceItem = z.object({
   discountAmount: money,
   taxAmount: money,
   lineTotal: money,
+  warrantyMonths: z.number().int().describe("The product's warranty when the line was saved"),
+  warrantyEndsAt: dateOnly.nullable().describe("Set on finalize (warranty starts on the invoice); null before, or without warranty"),
+})
+
+// A unit scanned for a serial-tracked line: picked on the draft, sold once finalized.
+export const invoiceSerialPick = z.object({
+  productId: z.string(),
+  serialItem: z.object({
+    id: z.number().int(),
+    serialNumber: z.string(),
+    palletNumber: z.string().nullable(),
+    accessories: z.array(z.object({ serialNumber: z.string(), accessory: z.object({ name: z.string() }) })),
+  }),
 })
 
 // A list row: the invoice without its lines.
@@ -67,8 +82,10 @@ export const invoiceSummary = z.object({
   type: quotationType,
   repairReceiveNoteId: z.string().nullable(),
   troubleshootId: z.string().nullable(),
-  oldInvoiceId: z.string().nullable(),
-  oldSerialNumberId: z.string().nullable(),
+  oldInvoiceId: z.number().int().nullable().describe("Service and warranty: the invoice the item was sold on"),
+  oldInvoiceNumber: z.string().nullable().describe("Its number; old-system text without a link on imported quotations"),
+  oldSerialItemId: z.number().int().nullable().describe("Service and warranty: the unit it is about"),
+  oldSerialNumber: z.string().nullable().describe("Its serial; old-system text without a link on imported quotations"),
   productModel: z.string().nullable(),
   paymentTerms: paymentTerms.nullable(),
   deliveryLocation: z.string().nullable(),
@@ -86,6 +103,7 @@ export const invoiceSummary = z.object({
   finalizedAt: z.date().nullable(),
   cancelledBy: z.string().nullable(),
   cancelledAt: z.date().nullable(),
+  isImported: z.boolean().describe("Imported from the old system: read only, can't be cancelled (409 INVOICE_IMPORTED)"),
   createdBy: z.string().nullable(),
   createdAt: z.date(),
   modifiedBy: z.string().nullable(),
@@ -120,6 +138,7 @@ const quotationLine = z.object({
 export const invoice = invoiceSummary.extend({
   customer: documentCustomer,
   items: z.array(invoiceItem),
+  serialPicks: z.array(invoiceSerialPick).describe("Scanned units of the serial-tracked lines"),
   quotation: z
     .object({
       id: z.number().int(),
@@ -188,8 +207,8 @@ export const createDirectInvoiceBody = invoiceFields
     type: quotationType.default("sales"),
     repairReceiveNoteId: referenceId("Repair received note, service only").default(null),
     troubleshootId: referenceId("Troubleshoot, warranty only").default(null),
-    oldInvoiceId: referenceId("Earlier invoice, service and warranty").default(null),
-    oldSerialNumberId: referenceId("Serial number of the item, service and warranty").default(null),
+    oldInvoiceId: referenceLink("Id of the finalized invoice the item was sold on; service and warranty").default(null),
+    oldSerialItemId: referenceLink("Id of the unit (GET /serial-items); service and warranty").default(null),
     productModel: z.string().trim().min(1).max(200).nullable().default(null).describe("Warranty only"),
     paymentTerms: paymentTerms.nullable().default(null),
     deliveryLocation: z.string().trim().min(1).max(500).nullable().default(null),
@@ -207,6 +226,17 @@ export const createDirectInvoiceBody = invoiceFields
 
 // Drafts only. From the fields without defaults (see the pitfall in AGENTS.md).
 export const updateInvoiceBody = invoiceFields.partial()
+
+export const scanSerialBody = z.object({
+  code: z.string().trim().min(1).max(100).describe("A unit's serial, one of its accessory serials, or a pallet number"),
+})
+
+export const scanSerialResult = z.object({
+  added: z.array(z.object({ serialItemId: z.number().int(), serialNumber: z.string(), sku: z.string() })),
+  skipped: z.number().int().describe("Units of a scanned pallet that couldn't be added (not on the invoice, line full, …)"),
+})
+
+export const invoiceSerialParams = z.object({ id: intId, serialItemId: intId })
 
 export type ListInvoicesQuery = z.infer<typeof listInvoicesQuery>
 export type CreateInvoiceBody = z.infer<typeof createInvoiceBody>

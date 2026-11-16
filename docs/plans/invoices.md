@@ -6,7 +6,8 @@ Status: **built 2026-11-06** (uncommitted), with these owner decisions that over
 - The draft form looks like the quotation form: the header is the quotation's (read-only); payment method (+ cheque /
   bank text), due date, notes and the pricing (lines: price, discount, qty, add/remove; service charge) can change.
   `InvoiceItem` keeps its own price and cost; the detail page shows the quotation's next to them.
-- Stock in hand is checked on create, edit and finalize (no pre-order exception); finalize moves inHand → inTransit.
+- Stock in hand is checked on create, edit and finalize (no pre-order exception); finalize takes the quantities out of
+  stock in hand, and cancelling a finalized invoice puts them back.
 - `INVOICES.CREATE_DIRECT` + `POST /invoices/direct` allow an invoice without a quotation (button hidden otherwise).
 - Old number format. The branch code is the `Role.branchCode` of the user who creates (draft number) or finalizes
   (final number); each branch has its own counter (`20261106120000_role_branch_code`). Shared quotation code is
@@ -126,10 +127,10 @@ Old frontend: `C:\Users\madha\Documents\Development-22-10-2026\GP-System-Client`
 | 5 | Fields: date; due date; payment method (Cash / Credit / Cheque / Bank Transfer, required unless the invoice is warranty); "Cheque number - bank name" when Cheque; bank (fixed list of 5) when Bank Transfer; sales manager (free text); payment terms; collection method (Delivery / Pickup, warranty only, required); delivery location; transport (field commented out). | **A**: typed columns. Sales manager is a user, as on quotations. Banks come from data, not code (§9, Q5). Transport is left out. |
 | 6 | Sales / Warranty / Service types, with old S/N, old invoice no., model, troubleshoot ref, repair note ref and service charge. A service invoice has no product lines and is priced by its charge plus VAT. | **B**: the same rules as quotations (`quotations.types.ts`). Reuse that code; don't copy it (§5.3). |
 | 7 | Save as **draft** (no serial numbers needed) or finalize straight from the preview. A draft gets the number `YYMON_GP01_N-draft`, a final invoice `YYMON_GP01_N` (e.g. `26NOV_GP01_14`). Both counters reset on the 1st of each month (cron). Month and year are in Asia/Colombo time. | **A**: the same formats, made by a database function with one counter row per (kind, month). No cron. Branch code and timezone come from settings (§5.2). |
-| 8 | **Finalize** a draft: for non-service invoices an item preparer name is required. It gets a new final number and moves stock: `stock − qty`, `stockInTransit + qty`, and the serials move to "in transit". It also creates a delivery note and updates the troubleshoot/repair status. | **A**: finalize moves `stockInHand → stockInTransit` with `StockMovement` rows. Delivery note, serials and troubleshoot/repair statuses: **L** (hooks noted). Item preparer: §9, Q4. |
+| 8 | **Finalize** a draft: for non-service invoices an item preparer name is required. It gets a new final number and moves stock: `stock − qty`, `stockInTransit + qty`, and the serials move to "in transit". It also creates a delivery note and updates the troubleshoot/repair status. | **A**: finalize takes the quantities out of `stockInHand` with `StockMovement` rows, sells the units scanned on the draft (`invoices.serials.ts`), starts each line's warranty and makes the draft delivery note. Troubleshoot/repair statuses: **L** (hooks noted). Item preparer: §9, Q4. |
 | 9 | **Cancel request**: a user without cancel rights writes a reason → `isCanceled = true`, shown as "Request for cancel". Users who can cancel see a "cancel requests" picker on the list (last 3 months) and can **Cancel** the invoice or say **Don't cancel** (clears the request). | **B**: request / decline / cancel as separate actions with their own permissions. The picker becomes a status filter on the list (no 3-month cut-off; §9, Q9). |
-| 10 | **Cancel** (admin + `canCancelInvoice`): for finalized, non-service invoices, the stock goes back (`stockInTransit − qty`, `stock + qty`, or from "sold" when the delivery note was delivered). It records cancelledBy/At. | **A**: reverse the finalize movements (`stockInTransit → stockInHand`). The "delivered" branch waits for delivery notes. |
-| 11 | Pre-order quotations: a draft from one adds the quantities to `preOrderQuantity`, finalizing or cancelling the draft takes them off again, and cancelling a finalized one adds them back. | **§9, Q2**: depends on what `stockPreOrder` means here. Don't guess. |
+| 10 | **Cancel** (admin + `canCancelInvoice`): for finalized, non-service invoices, the stock goes back (`stockInTransit − qty`, `stock + qty`, or from "sold" when the delivery note was delivered). It records cancelledBy/At. | **A**: puts the quantities back into `stockInHand`, the sold units back in stock, and cancels the delivery note. |
+| 11 | Pre-order quotations: a draft from one adds the quantities to `preOrderQuantity`, finalizing or cancelling the draft takes them off again, and cancelling a finalized one adds them back. | None: invoices have no pre-order logic (§9, Q2). |
 | 12 | List columns: Invoice No., Quotation No., Type, Customer Code, Customer Name, Amount (LKR, with VAT; a cancelled invoice shows 0.00), Date (finalized date, else date), Status (Cancelled / Request for cancel / Draft / Active). Search: invoice no., quotation no., customer code, serial numbers, product name or category. | **A**: `DataGrid` with the same columns. Search by number, quotation no., customer and product. Serial-number search waits for serials. |
 | 13 | A technical-team user without office rights only sees zero-value invoices. | **L** for now (§9, Q8). It was a role check in code; if needed, it gets its own permission. |
 | 14 | The view page shows created/finalized/cancelled by and when, and when the quotation was created and by whom. | **B**: detail rows. The audit columns and user names come from the API. |
@@ -142,12 +143,13 @@ Old frontend: `C:\Users\madha\Documents\Development-22-10-2026\GP-System-Client`
 1. A confirmed quotation (`paymentConfirmed` / `creditConfirmed`, not deleted, no live invoice) → **Create invoice**.
    The form opens, filled from the quotation. The user completes payment method, due date and so on, and saves
    **as a draft**. The draft gets the next draft number, and the quotation becomes `invoiceCreated`.
-2. Warehouse: they open the draft and add the item preparer (non-service). Then they **Finalize**: the invoice gets
-   the next final number, stock moves `inHand → inTransit` (non-service), and the invoice can no longer be edited.
+2. Warehouse: they open the draft and scan a unit for every unit of each serial-tracked line. Then they **Finalize**:
+   the invoice gets the next final number, its quantities leave stock in hand, the scanned units are sold, and the
+   invoice can no longer be edited.
 3. A draft can still be edited (fields and lines) and can be **cancelled**. Cancelling a draft puts the quotation back
    to the status it had.
-4. On a finalized invoice, a user can **request cancellation** with a reason. A user with `INVOICES.CANCEL` can
-   **cancel** it (stock goes back `inTransit → inHand`) or **decline** the request.
+4. A user with `INVOICES.CANCEL` can **cancel** a finalized invoice: its stock in hand and sold units go back, and its
+   delivery note is cancelled.
 5. The detail page shows the tax invoice PDF (draft or final). It's downloadable as `<number> <customer>.pdf`.
 
 Whether invoices can also be made without a quotation (the old New Invoice page had a customer picker): §9, Q1.
@@ -200,7 +202,8 @@ model Invoice {
   paymentTerms        QuotationPaymentTerms?
   collectionMethod    InvoiceCollectionMethod?             // warranty only, required there
   deliveryLocation    String?
-  repairReceiveNoteId, troubleshootId, oldInvoiceId, oldSerialNumberId, productModel   // as on Quotation (not built yet)
+  repairReceiveNoteId, troubleshootId                    // as on Quotation (repairs, troubleshoots not built yet)
+  oldInvoiceId / oldInvoiceNumber, oldSerialItemId / oldSerialNumber, productModel   // as on Quotation
   serviceCharge       Decimal? @db.Decimal(14, 2)
   serviceTaxRate      Decimal? @db.Decimal(5, 2)
   subtotal, discountTotal, taxTotal, grandTotal          // Decimal(14, 2), from the lines or the service charge
@@ -288,9 +291,9 @@ The same files as quotations:
   stock, the quotation).
 - **Transactions:** every write is one transaction. It locks the invoice row (`SELECT … FOR UPDATE`, as
   `updateQuotation` does) and the product rows in id order before it moves stock.
-- **Stock moves** go through one small function: change the bucket columns and write `StockMovement` rows with
-  `reference` = the invoice number (`reference` is the existing placeholder text column). Live stock (SSE) then
-  updates every open screen by itself. Don't touch `stockVersion`.
+- **Stock moves** go through `changeStock()` (`modules/stock`): it changes `stockInHand` and writes a `StockMovement`
+  per product with `invoiceId` and `reference` = the invoice number. Live stock (SSE) then updates every open screen
+  by itself. Don't touch `stockVersion`.
 - **Quotation side:**
   - Creating the invoice sets the quotation to `invoiceCreated` in the same transaction.
   - Cancelling a draft sets it back to `quotationStatusBefore`.
@@ -396,8 +399,8 @@ Everything in `GP-ERP-Client/AGENTS.md` applies. In particular:
 
 | Module | Old invoice used it for | Here |
 |---|---|---|
-| Serial numbers | per-line serials (main, complimentary, battery, pallet), the "in transit" serial lists, PDF serial page, search by serial | no serial columns or UI. Leave a note at the line model and the PDF |
-| Delivery notes | created on finalize; "Delivered" changes how a cancel restores stock | nothing. Note it in the finalize and cancel functions |
+| Serial numbers | per-line serials (main, complimentary, battery, pallet), the "in transit" serial lists, PDF serial page, search by serial | built: units scanned on the draft (`InvoiceSerialItem`, by serial, accessory serial or pallet), sold on finalize, back in stock on cancel; printed under each line on the PDF. Search by serial is on `/serial-items` |
+| Delivery notes | created on finalize; "Delivered" changes how a cancel restores stock | the draft note is made on finalize and cancelled with the invoice; "Delivered" isn't built |
 | Repairs, Troubleshoots | refs on service/warranty invoices; status → Issued on finalize | references stay unchecked text, copied from the quotation, as on quotations |
 | Credit notes, payment receipts | invoice lookups by customer | nothing |
 

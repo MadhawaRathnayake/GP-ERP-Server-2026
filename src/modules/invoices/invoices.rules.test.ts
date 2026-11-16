@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { contentProblems, paymentProblems, quantitiesByProduct, stockShortages } from "./invoices.rules.js"
+import { addMonths, contentProblems, paymentProblems, quantitiesByProduct, stockShortages } from "./invoices.rules.js"
 
 describe("contentProblems", () => {
   it("prices a service invoice by its charge alone", () => {
@@ -64,5 +64,19 @@ describe("stock", () => {
       { productId: "PROD000002", sku: "B", needed: 2, inHand: 1 },
       { productId: "PROD000003", sku: "PROD000003", needed: 1, inHand: 0 },
     ])
+  })
+})
+
+describe("addMonths", () => {
+  const day = (text: string) => new Date(`${text}T00:00:00.000Z`)
+
+  it.each([
+    ["2026-11-12", 12, "2027-11-12"],
+    ["2026-11-12", 60, "2031-11-12"],
+    ["2026-01-31", 1, "2026-02-28"],
+    ["2028-01-31", 1, "2028-02-29"],
+    ["2026-08-31", 18, "2028-02-29"],
+  ])("%s + %i months is %s", (from, months, to) => {
+    expect(addMonths(day(from), months)).toEqual(day(to))
   })
 })

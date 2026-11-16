@@ -41,3 +41,32 @@ export class InsufficientStockError extends AppError {
     super(409, "INSUFFICIENT_STOCK", `Not enough stock: ${list}`, { shortages })
   }
 }
+
+/** Finalizing needs a serial for every unit of every serial-tracked line, scanned on the draft. */
+export class SerialsMissingError extends AppError {
+  constructor(lines: { sku: string; quantity: number; scanned: number }[]) {
+    const list = lines.map(({ sku, quantity, scanned }) => `${sku} (${scanned} of ${quantity} scanned)`).join(", ")
+    super(409, "SERIALS_MISSING", `Scan a serial number for every unit first: ${list}`, { lines })
+  }
+}
+
+/** No unit, accessory or pallet has the scanned code. */
+export class SerialNotFoundError extends AppError {
+  constructor(code: string) {
+    super(404, "SERIAL_NOT_FOUND", `No unit, accessory or pallet has the number ${code}`)
+  }
+}
+
+/** The scanned unit can't go on this invoice: another product, already scanned, on another invoice, not in stock, … */
+export class SerialNotAvailableError extends AppError {
+  constructor(reason: string) {
+    super(409, "SERIAL_NOT_AVAILABLE", reason)
+  }
+}
+
+/** An invoice imported from the old system can't be cancelled here: its stock and units are as the old system left them. */
+export class InvoiceImportedError extends AppError {
+  constructor(id: number) {
+    super(409, "INVOICE_IMPORTED", `Invoice ${id} was imported from the old system, so it can't be cancelled here`)
+  }
+}
