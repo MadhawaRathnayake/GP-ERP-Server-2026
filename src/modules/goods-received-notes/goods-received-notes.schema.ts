@@ -1,8 +1,8 @@
 import { z } from "zod"
 import { pageQuery, pageResult } from "#http/pagination.js"
-import { approvalList } from "#modules/approvals/approvals.schema.js"
 import { purchaseOrderStatus } from "#modules/purchase-orders/purchase-orders.schema.js"
 import { dateOnly } from "#modules/quotations/quotations.schema.js"
+import { unitInput } from "#modules/serial-items/serial-items.schema.js"
 
 const supplierId = z.string().regex(/^SUP\d{5,}$/, "Must be a supplier id like SUP00001")
 const productId = z.string().regex(/^PROD\d{6,}$/, "Must be a product id like PROD000001")
@@ -14,14 +14,19 @@ export const goodsReceivedNoteIdParams = z.object({ id: intId })
 export const orderParams = z.object({ internalRequisitionId: intId })
 
 export const goodsReceivedNoteStatus = z
-  .enum(["pending", "approved", "rejected", "cancelled"])
+  .enum(["partiallyCompleted", "needSerialNumbers", "completed"])
   .describe(
-    "pending → approved (adds the goods to stock) | rejected (or approved on save when approval is off). Editing a " +
-      "rejected one → pending. A pending or rejected one can be cancelled",
+    "Worked out by the server: needSerialNumbers while a serial-tracked line has fewer units than it received, else " +
+      "partiallyCompleted while something ordered is still to come, else completed",
   )
 
 const party = z.object({ id: z.string(), name: z.string() })
-const product = z.object({ sku: z.string(), title: z.string(), imageUrl: z.string().nullable() })
+const product = z.object({
+  sku: z.string(),
+  title: z.string(),
+  imageUrl: z.string().nullable(),
+  trackingType: z.enum(["quantity", "serial"]),
+})
 
 export const goodsReceivedNoteItem = z.object({
   id: z.number().int(),
@@ -29,8 +34,32 @@ export const goodsReceivedNoteItem = z.object({
   productId: z.string(),
   product,
   orderedQuantity: z.number().int().describe("The order line's quantity (the PO's, or the international IR's)"),
-  receivedQuantity: z.number().int().describe("Received in this delivery"),
+  receivedQuantity: z.number().int().describe("Received so far, over every delivery"),
+  outstandingQuantity: z.number().int().describe("orderedQuantity − receivedQuantity, at least 0"),
+  serialsEntered: z.number().int().describe("Serial-tracked: units entered so far (0 for a quantity-tracked line)"),
+  serialsMissing: z
+    .number()
+    .int()
+    .describe("Serial-tracked: the serials still to add, receivedQuantity − serialsEntered, leaving out imported deliveries"),
+})
+
+export const goodsReceivedNoteDelivery = z.object({
+  id: z.number().int(),
+  deliveryNo: z.number().int(),
+  receivedDate: dateOnly,
+  supplierInvoiceNumber: z.string().nullable(),
   remarks: z.string().nullable(),
+  isImported: z.boolean().describe("Recorded in the old system: already in stock there, so its units aren't asked for serials"),
+  items: z.array(
+    z.object({
+      productId: z.string(),
+      product: z.object({ sku: z.string(), title: z.string() }),
+      quantity: z.number().int(),
+      remarks: z.string().nullable(),
+    }),
+  ),
+  creator: party.nullable(),
+  createdAt: z.date(),
 })
 
 // The IR a GRN receives against, with its PO when it's local.
@@ -49,12 +78,10 @@ export const goodsReceivedNoteSummary = z.object({
   internalRequisition: requisitionRef,
   supplierId: z.string(),
   supplier: party.extend({ code: z.string() }),
-  receivedDate: dateOnly.describe("The printed date"),
-  supplierInvoiceNumber: z.string().nullable(),
   status: goodsReceivedNoteStatus,
-  cancelReason: z.string().nullable(),
-  cancelledBy: z.string().nullable(),
-  cancelledAt: z.date().nullable(),
+  deliveries: z
+    .array(z.object({ deliveryNo: z.number().int(), receivedDate: dateOnly, supplierInvoiceNumber: z.string().nullable() }))
+    .describe("Its deliveries, oldest first"),
   createdBy: z.string().nullable().describe("Prepared by"),
   creator: party.nullable(),
   createdAt: z.date(),
@@ -78,8 +105,7 @@ export const goodsReceivedNote = goodsReceivedNoteSummary.extend({
     country: z.string(),
   }),
   items: z.array(goodsReceivedNoteItem),
-  canceller: party.nullable(),
-  approvals: approvalList,
+  deliveries: z.array(goodsReceivedNoteDelivery),
 })
 
 export const goodsReceivedNotePage = pageResult(goodsReceivedNoteSummary)
@@ -97,15 +123,16 @@ export const orderReceipt = z.object({
         productId: z.string(),
         product,
         orderedQuantity: z.number().int(),
-        receivedQuantity: z.number().int().describe("Σ received on the order's approved GRNs"),
-        outstandingQuantity: z.number().int().describe("orderedQuantity − receivedQuantity, never below 0"),
+        receivedQuantity: z.number().int().describe("Received so far on the order's GRN"),
+        outstandingQuantity: z.number().int().describe("orderedQuantity − receivedQuantity"),
       }),
     )
     .describe("The PO's lines (local IR; none until it has one) or the IR's (international), in order"),
-  goodsReceivedNotes: z
-    .array(z.object({ id: z.number().int(), grnNumber: z.string(), status: goodsReceivedNoteStatus, receivedDate: dateOnly }))
-    .describe("Every GRN of the order, newest first"),
-  blockedReason: z.string().nullable().describe("Why a GRN can't be made for the order now; null when it can"),
+  goodsReceivedNote: z
+    .object({ id: z.number().int(), grnNumber: z.string(), status: goodsReceivedNoteStatus })
+    .nullable()
+    .describe("The order's GRN, once its first delivery is recorded"),
+  blockedReason: z.string().nullable().describe("Why a delivery can't be recorded for the order now; null when it can"),
 })
 
 export const listGoodsReceivedNotesQuery = pageQuery.extend({
@@ -114,47 +141,49 @@ export const listGoodsReceivedNotesQuery = pageQuery.extend({
     .trim()
     .min(1)
     .optional()
-    .describe("Case-insensitive partial match on the GRN, IR or PO number, the supplier's code or name, or the supplier invoice number"),
+    .describe("Case-insensitive partial match on the GRN, IR or PO number, the supplier's code or name, or a supplier invoice number"),
   status: goodsReceivedNoteStatus.optional(),
   supplierId: supplierId.optional(),
 })
 
-// What a client sends for a line: one per product of the order. orderedQuantity is always the order's.
-export const goodsReceivedNoteItemInput = z.object({
+// What a client sends for a delivery: what came of each product (0 or more; lines with 0 aren't stored).
+export const deliveryItemInput = z.object({
   productId,
-  receivedQuantity: z.number().int().min(0).max(1_000_000).describe("At most what is still outstanding on the order"),
+  quantity: z.number().int().min(0).max(1_000_000).describe("At most what is still outstanding on the order"),
   remarks: z.string().trim().min(1).max(500).nullable().default(null),
 })
 
-const goodsReceivedNoteFields = z.object({
-  receivedDate: dateOnly,
-  supplierInvoiceNumber: z.string().trim().min(1).max(100).nullable(),
+export const deliveryBody = z.object({
+  receivedDate: dateOnly.optional().describe("Defaults to today"),
+  supplierInvoiceNumber: z.string().trim().min(1).max(100).nullable().default(null),
+  remarks: z.string().trim().min(1).max(500).nullable().default(null),
   items: z
-    .array(goodsReceivedNoteItemInput)
-    .min(1, "Add the order's products")
+    .array(deliveryItemInput)
+    .min(1, "Add what came")
     .max(200)
     .refine((items) => new Set(items.map((item) => item.productId)).size === items.length, "Each product can be on one line only")
-    .refine((items) => items.some((item) => item.receivedQuantity > 0), "Receive at least one product")
-    .describe("One per product of the order, in any order (lines are numbered as on the order). On update, replaces every line"),
+    .refine((items) => items.some((item) => item.quantity > 0), "Receive at least one product"),
 })
 
-export const createGoodsReceivedNoteBody = goodsReceivedNoteFields.extend({
+export const createGoodsReceivedNoteBody = deliveryBody.extend({
   internalRequisitionId: z
     .number()
     .int()
     .positive()
     .max(2147483647)
-    .describe("A local IR whose purchase order is approved, or an approved international IR"),
-  receivedDate: goodsReceivedNoteFields.shape.receivedDate.optional().describe("Defaults to today"),
-  supplierInvoiceNumber: goodsReceivedNoteFields.shape.supplierInvoiceNumber.default(null),
+    .describe("A local IR whose purchase order is approved, or an approved international IR, with no GRN yet"),
 })
 
-// Pending and rejected only. From the fields without defaults (see the pitfall in AGENTS.md).
-export const updateGoodsReceivedNoteBody = goodsReceivedNoteFields.partial()
-
-export const cancelGoodsReceivedNoteBody = z.object({ reason: z.string().trim().min(1, "Give a reason").max(500) })
+export const addSerialsBody = z.object({
+  productId,
+  units: z
+    .array(unitInput)
+    .min(1)
+    .max(500)
+    .describe("New units of a serial-tracked line, at most its serials still missing; each goes into stock"),
+})
 
 export type ListGoodsReceivedNotesQuery = z.infer<typeof listGoodsReceivedNotesQuery>
-export type GoodsReceivedNoteItemInput = z.infer<typeof goodsReceivedNoteItemInput>
+export type DeliveryBody = z.infer<typeof deliveryBody>
 export type CreateGoodsReceivedNoteBody = z.infer<typeof createGoodsReceivedNoteBody>
-export type UpdateGoodsReceivedNoteBody = z.infer<typeof updateGoodsReceivedNoteBody>
+export type AddSerialsBody = z.infer<typeof addSerialsBody>

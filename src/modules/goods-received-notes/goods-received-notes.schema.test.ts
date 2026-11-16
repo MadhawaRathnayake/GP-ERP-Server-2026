@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { createGoodsReceivedNoteBody, updateGoodsReceivedNoteBody } from "./goods-received-notes.schema.js"
+import { addSerialsBody, createGoodsReceivedNoteBody, deliveryBody } from "./goods-received-notes.schema.js"
 
 const base = { internalRequisitionId: 1 }
-const line = (productId: string, receivedQuantity = 1, more: object = {}) => ({ productId, receivedQuantity, ...more })
+const line = (productId: string, quantity = 1, more: object = {}) => ({ productId, quantity, ...more })
 
 describe("createGoodsReceivedNoteBody", () => {
   it("defaults to no supplier invoice, no remarks and no date (today)", () => {
     const body = createGoodsReceivedNoteBody.parse({ ...base, items: [line("PROD000001"), line("PROD000002", 0)] })
-    expect(body).toMatchObject({ supplierInvoiceNumber: null, items: [{ remarks: null }, { remarks: null, receivedQuantity: 0 }] })
+    expect(body).toMatchObject({ supplierInvoiceNumber: null, remarks: null, items: [{ remarks: null }, { remarks: null, quantity: 0 }] })
     expect(body.receivedDate).toBeUndefined()
   })
 
@@ -24,8 +24,23 @@ describe("createGoodsReceivedNoteBody", () => {
   })
 })
 
-describe("updateGoodsReceivedNoteBody", () => {
-  it("keeps fields that aren't sent", () => {
-    expect(updateGoodsReceivedNoteBody.parse({ receivedDate: "2026-12-01" })).toEqual({ receivedDate: new Date("2026-12-01T00:00:00.000Z") })
+describe("deliveryBody", () => {
+  it("is the same delivery without the order", () => {
+    expect(deliveryBody.parse({ receivedDate: "2026-12-01", items: [line("PROD000001")] })).toMatchObject({
+      receivedDate: new Date("2026-12-01T00:00:00.000Z"),
+    })
+  })
+})
+
+describe("addSerialsBody", () => {
+  it("takes units as scanned", () => {
+    expect(addSerialsBody.parse({ productId: "PROD000001", units: [{ serialNumber: " SN-1 " }] })).toEqual({
+      productId: "PROD000001",
+      units: [{ serialNumber: "SN-1", palletNumber: null, accessories: [] }],
+    })
+  })
+
+  it("needs at least one unit", () => {
+    expect(addSerialsBody.safeParse({ productId: "PROD000001", units: [] }).success).toBe(false)
   })
 })

@@ -1,29 +1,39 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { actorOf } from "#security/auth.plugin.js"
-import { rejectBody } from "#modules/approvals/approvals.schema.js"
 import {
-  cancelGoodsReceivedNoteBody,
+  addSerialsBody,
   createGoodsReceivedNoteBody,
+  deliveryBody,
   goodsReceivedNote,
   goodsReceivedNoteIdParams,
   goodsReceivedNotePage,
   listGoodsReceivedNotesQuery,
   orderParams,
   orderReceipt,
-  updateGoodsReceivedNoteBody,
 } from "./goods-received-notes.schema.js"
 import {
-  approveGoodsReceivedNote,
-  cancelGoodsReceivedNote,
+  addDelivery,
+  addSerials,
   createGoodsReceivedNote,
   getGoodsReceivedNote,
   getOrderReceipt,
   listGoodsReceivedNotes,
-  rejectGoodsReceivedNote,
-  updateGoodsReceivedNote,
 } from "./goods-received-notes.service.js"
 
-// Each action has its own route and permission (approving and rejecting are separate grants).
+const detailTables = [
+  "GoodsReceivedNote",
+  "GoodsReceivedNoteItem",
+  "GoodsReceivedNoteDelivery",
+  "GoodsReceivedNoteDeliveryItem",
+  "SerialItem",
+  "InternalRequisition",
+  "PurchaseOrder",
+  "Supplier",
+  "Product",
+  "User",
+]
+
+// No approval: a delivery puts its goods in stock when it is saved; serials are added as the last step.
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     "/",
@@ -31,7 +41,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       schema: { querystring: listGoodsReceivedNotesQuery, response: { 200: goodsReceivedNotePage } },
       config: {
         permission: "GOODS_RECEIVED_NOTES.VIEW",
-        cache: ["GoodsReceivedNote", "InternalRequisition", "PurchaseOrder", "Supplier", "User"],
+        cache: ["GoodsReceivedNote", "GoodsReceivedNoteDelivery", "InternalRequisition", "PurchaseOrder", "Supplier", "User"],
       },
     },
     (req) => listGoodsReceivedNotes(req.query),
@@ -41,21 +51,19 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/orders/:internalRequisitionId",
     {
       schema: {
+        description: "What an order (an IR, with its PO when local) has received so far, its GRN, and whether a delivery can be recorded",
         params: orderParams,
         response: { 200: orderReceipt },
-        description:
-          "What an internal requisition's order (its purchase order, or the IR itself when international) has received " +
-          "on approved GRNs, what is outstanding, its GRNs, and `blockedReason`: why a GRN can't be made now (null when it can).",
       },
       config: {
         permission: "GOODS_RECEIVED_NOTES.VIEW",
         cache: [
+          "GoodsReceivedNote",
+          "GoodsReceivedNoteItem",
           "InternalRequisition",
           "InternalRequisitionItem",
           "PurchaseOrder",
           "PurchaseOrderItem",
-          "GoodsReceivedNote",
-          "GoodsReceivedNoteItem",
           "Supplier",
           "Product",
         ],
@@ -68,10 +76,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/:id",
     {
       schema: { params: goodsReceivedNoteIdParams, response: { 200: goodsReceivedNote } },
-      config: {
-        permission: "GOODS_RECEIVED_NOTES.VIEW",
-        cache: ["GoodsReceivedNote", "GoodsReceivedNoteItem", "InternalRequisition", "PurchaseOrder", "Supplier", "Product", "User", "Approval"],
-      },
+      config: { permission: "GOODS_RECEIVED_NOTES.VIEW", cache: detailTables },
     },
     (req) => getGoodsReceivedNote(req.params.id),
   )
@@ -80,76 +85,41 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/",
     {
       schema: {
+        description: "Records an order's first delivery, which makes its GRN. Later deliveries: POST /:id/deliveries",
         body: createGoodsReceivedNoteBody,
         response: { 201: goodsReceivedNote },
-        description:
-          "From a local internal requisition whose purchase order is approved, or an approved international one, with " +
-          "something outstanding and no open GRN (409 `GOODS_RECEIVED_NOTE_SOURCE` otherwise). `items` has one line per " +
-          "product of the order; a quantity above what's outstanding is 409 `GOODS_RECEIVED_NOTE_QUANTITY`. Saved as " +
-          "pending, or as approved (the goods go into stock) when GRNs don't need approval (Admin → Approvals).",
       },
       config: { permission: "GOODS_RECEIVED_NOTES.CREATE" },
     },
     async (req, reply) => reply.status(201).send(await createGoodsReceivedNote(req.body, actorOf(req))),
   )
 
-  app.patch(
-    "/:id",
+  app.post(
+    "/:id/deliveries",
     {
       schema: {
+        description: "Records another delivery of the order's goods",
         params: goodsReceivedNoteIdParams,
-        body: updateGoodsReceivedNoteBody,
+        body: deliveryBody,
         response: { 200: goodsReceivedNote },
-        description:
-          "Pending and rejected only (409 `GOODS_RECEIVED_NOTE_NOT_EDITABLE`). `items` replaces every line. Sets the " +
-          "status again as on create, so editing a rejected GRN submits it again.",
       },
-      config: { permission: "GOODS_RECEIVED_NOTES.EDIT" },
+      config: { permission: "GOODS_RECEIVED_NOTES.CREATE" },
     },
-    (req) => updateGoodsReceivedNote(req.params.id, req.body, actorOf(req)),
+    (req) => addDelivery(req.params.id, req.body, actorOf(req)),
   )
 
   app.post(
-    "/:id/approve",
+    "/:id/serials",
     {
       schema: {
+        description: "Adds serials for units of a serial-tracked line; each unit goes into stock",
         params: goodsReceivedNoteIdParams,
+        body: addSerialsBody,
         response: { 200: goodsReceivedNote },
-        description:
-          "Pending only (409 `GOODS_RECEIVED_NOTE_NOT_PENDING`). Adds the received quantities to stock in hand, and " +
-          "completes the purchase order once the order is received in full.",
       },
-      config: { permission: "GOODS_RECEIVED_NOTES.APPROVE" },
+      config: { permission: "GOODS_RECEIVED_NOTES.ADD_SERIALS" },
     },
-    (req) => approveGoodsReceivedNote(req.params.id, actorOf(req)),
-  )
-
-  app.post(
-    "/:id/reject",
-    {
-      schema: {
-        params: goodsReceivedNoteIdParams,
-        body: rejectBody,
-        response: { 200: goodsReceivedNote },
-        description: "Pending only (409 `GOODS_RECEIVED_NOTE_NOT_PENDING`). It can then be edited and submitted again.",
-      },
-      config: { permission: "GOODS_RECEIVED_NOTES.REJECT" },
-    },
-    (req) => rejectGoodsReceivedNote(req.params.id, req.body.reason, actorOf(req)),
-  )
-
-  app.post(
-    "/:id/cancel",
-    {
-      schema: {
-        params: goodsReceivedNoteIdParams,
-        body: cancelGoodsReceivedNoteBody,
-        response: { 200: goodsReceivedNote },
-        description: "Pending and rejected only (409 `GOODS_RECEIVED_NOTE_NOT_CANCELLABLE`): nothing has gone into stock yet.",
-      },
-      config: { permission: "GOODS_RECEIVED_NOTES.CANCEL" },
-    },
-    (req) => cancelGoodsReceivedNote(req.params.id, req.body.reason, actorOf(req)),
+    (req) => addSerials(req.params.id, req.body, actorOf(req)),
   )
 }
 

@@ -3,44 +3,31 @@ import { db } from "#core/db.js"
 import { BadRequestError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
-import { isApprovalRequired, listApprovals, recordApproval } from "#modules/approvals/approvals.service.js"
-import { getSettings } from "#modules/settings/settings.service.js"
+import { addUnits } from "#modules/serial-items/serial-items.service.js"
+import { getSettings, today } from "#modules/settings/settings.service.js"
+import { changeStock } from "#modules/stock/stock.service.js"
 import {
   GoodsAlreadyReceivedError,
-  GoodsReceivedNoteNotCancellableError,
-  GoodsReceivedNoteNotEditableError,
-  GoodsReceivedNoteNotPendingError,
   GoodsReceivedNoteQuantityError,
+  GoodsReceivedNoteSerialsError,
   GoodsReceivedNoteSourceError,
 } from "./goods-received-notes.errors.js"
-import type {
-  CreateGoodsReceivedNoteBody,
-  GoodsReceivedNoteItemInput,
-  ListGoodsReceivedNotesQuery,
-  UpdateGoodsReceivedNoteBody,
-} from "./goods-received-notes.schema.js"
+import type { AddSerialsBody, CreateGoodsReceivedNoteBody, DeliveryBody, ListGoodsReceivedNotesQuery } from "./goods-received-notes.schema.js"
 
-// Goods received from the supplier in one delivery, the last step of IR → purchase order → GRN. The "order" a GRN
-// receives against is a local IR's approved purchase order, or an approved international IR (which has no PO); the GRN
-// stores the IR, and the PO is the IR's. Its lines are the order's lines, each with what came this time (0 or more, at
-// most what is still outstanding: ordered − what the order's approved GRNs received). One GRN per delivery, and only one
-// open (pending or rejected) per order at a time, so a quantity can't be received twice.
-// Saving starts the GRN as pending, or as approved when Admin → Approvals says GRNs don't need approval. Approving puts
-// its goods in stock (+stockInHand, a StockMovement per product) and, once the order is received in full, sets the PO to
-// completed; an approved GRN is final. A pending or rejected GRN can be edited (editing a rejected one submits it again)
-// or cancelled. Cancelling the order (its IR or PO) cancels its open GRN, and is refused once goods have been received.
-// Every write locks the IR row first, then the GRN's, as the IR and PO cancels do.
-//
-// NOT BUILT YET: serial numbers. Approving a line of a serial-tracked product will need one serial per unit
-// (StockMovement.serialNumber) once the Serial numbers module exists.
-
-const SCREEN = "GOODS_RECEIVED_NOTES"
-
-const openStatuses: GoodsReceivedNoteStatus[] = ["pending", "rejected"]
-const isOpen = (status: GoodsReceivedNoteStatus) => openStatuses.includes(status)
+// The goods received against one order, the last step of IR → purchase order → GRN (docs/plans/serial-numbers.md
+// §3.10). The "order" is a local IR's approved purchase order, or an approved international IR (which has no PO); the
+// GRN stores the IR, and the PO is the IR's. One GRN per order, holding every order line, received in batches: the first
+// delivery creates the GRN, later ones are added to it. There is no approval: saving a delivery puts its
+// quantity-tracked goods in stock at once (+stockInHand, a StockMovement per product). Serial-tracked goods go into
+// stock one unit at a time as their serials are added (modules/serial-items), the last step. The status follows:
+// needSerialNumbers while a serial line misses serials, else partiallyCompleted while something is still to come, else
+// completed; the PO becomes completed once everything has arrived. A saved delivery is final (a mistake is fixed with a
+// stock adjustment), and an order with a GRN can't be cancelled. Every write locks the IR row first, then the GRN's.
+// Deliveries imported from the old system (isImported, scripts/import-old-supply.ts) were put in stock there, so their
+// serial-tracked units aren't asked for serials.
 
 const person = { select: { id: true, name: true } } as const
-const productRef = { select: { sku: true, title: true, imageUrl: true } } as const
+const productRef = { select: { sku: true, title: true, imageUrl: true, trackingType: true } } as const
 const supplierRef = { select: { id: true, code: true, name: true } } as const
 
 const summaryInclude = {
@@ -54,6 +41,11 @@ const summaryInclude = {
   },
   supplier: supplierRef,
   creator: person,
+  deliveries: {
+    where: { isDeleted: false },
+    orderBy: { deliveryNo: "asc" },
+    select: { deliveryNo: true, receivedDate: true, supplierInvoiceNumber: true },
+  },
 } satisfies Prisma.GoodsReceivedNoteInclude
 
 // The detail also carries what the printed GRN shows.
@@ -76,7 +68,25 @@ const detailInclude = {
     },
   },
   items: { where: { isDeleted: false }, orderBy: { lineNo: "asc" }, include: { product: productRef } },
-  canceller: person,
+  deliveries: {
+    where: { isDeleted: false },
+    orderBy: { deliveryNo: "asc" },
+    select: {
+      id: true,
+      deliveryNo: true,
+      receivedDate: true,
+      supplierInvoiceNumber: true,
+      remarks: true,
+      isImported: true,
+      creator: person,
+      createdAt: true,
+      items: {
+        where: { isDeleted: false },
+        orderBy: { id: "asc" },
+        select: { productId: true, quantity: true, remarks: true, product: { select: { sku: true, title: true } } },
+      },
+    },
+  },
 } satisfies Prisma.GoodsReceivedNoteInclude
 
 const orderLineSelect = {
@@ -86,15 +96,16 @@ const orderLineSelect = {
 } as const
 
 export function listGoodsReceivedNotes({ q, status, supplierId, ...page }: ListGoodsReceivedNotesQuery) {
+  const contains = q && { contains: q, mode: "insensitive" as const }
   const where: Prisma.GoodsReceivedNoteWhereInput = {
-    ...(q && {
+    ...(contains && {
       OR: [
-        { grnNumber: { contains: q, mode: "insensitive" } },
-        { supplierInvoiceNumber: { contains: q, mode: "insensitive" } },
-        { internalRequisition: { internalRequisitionNumber: { contains: q, mode: "insensitive" } } },
-        { internalRequisition: { purchaseOrder: { is: { purchaseOrderNumber: { contains: q, mode: "insensitive" } } } } },
-        { supplier: { code: { contains: q, mode: "insensitive" } } },
-        { supplier: { name: { contains: q, mode: "insensitive" } } },
+        { grnNumber: contains },
+        { deliveries: { some: { supplierInvoiceNumber: contains, isDeleted: false } } },
+        { internalRequisition: { internalRequisitionNumber: contains } },
+        { internalRequisition: { purchaseOrder: { is: { purchaseOrderNumber: contains } } } },
+        { supplier: { code: contains } },
+        { supplier: { name: contains } },
       ],
     }),
     ...(status && { status }),
@@ -109,19 +120,32 @@ export function listGoodsReceivedNotes({ q, status, supplierId, ...page }: ListG
 }
 
 export async function getGoodsReceivedNote(id: number) {
-  const [note, approvals] = await Promise.all([
+  const [note, serials, imported] = await Promise.all([
     db.goodsReceivedNote.findUnique({ where: { id }, include: detailInclude }),
-    listApprovals(SCREEN, id),
+    serialCounts(db, id),
+    importedQuantities(db, id),
   ])
   if (!note || note.isDeleted) throw new NotFoundError("GRN", String(id))
-  return { ...note, approvals }
+  return {
+    ...note,
+    items: note.items.map((item) => {
+      const serialsEntered = item.product.trackingType === "serial" ? (serials.get(item.productId) ?? 0) : 0
+      return {
+        ...item,
+        outstandingQuantity: Math.max(0, item.orderedQuantity - item.receivedQuantity),
+        serialsEntered,
+        serialsMissing:
+          item.product.trackingType === "serial" ? item.receivedQuantity - (imported.get(item.productId) ?? 0) - serialsEntered : 0,
+      }
+    }),
+  }
 }
 
-/** What the IR's order has received so far, its GRNs, and why a new GRN can't be made, if it can't. */
+/** What the IR's order has received so far, its GRN, and why a delivery can't be recorded now, if it can't. */
 export async function getOrderReceipt(internalRequisitionId: number) {
   const order = await loadOrder(internalRequisitionId)
   if (!order) throw new NotFoundError("Internal requisition", String(internalRequisitionId))
-  const { requisition, purchaseOrder, supplier, lines, goodsReceivedNotes } = order
+  const { requisition, purchaseOrder, supplier, lines, note } = order
   return {
     internalRequisitionId: requisition.id,
     internalRequisitionNumber: requisition.internalRequisitionNumber,
@@ -129,126 +153,126 @@ export async function getOrderReceipt(internalRequisitionId: number) {
     purchaseOrder: purchaseOrder && { id: purchaseOrder.id, purchaseOrderNumber: purchaseOrder.purchaseOrderNumber, status: purchaseOrder.status },
     supplier,
     lines,
-    goodsReceivedNotes: goodsReceivedNotes.map(({ id, grnNumber, status, receivedDate }) => ({ id, grnNumber, status, receivedDate })),
-    blockedReason: newGoodsReceivedNoteProblem(order),
+    goodsReceivedNote: note && { id: note.id, grnNumber: note.grnNumber, status: note.status },
+    blockedReason: deliveryProblem(order),
   }
 }
 
-export async function createGoodsReceivedNote({ internalRequisitionId, items, ...data }: CreateGoodsReceivedNoteBody, actor: Actor) {
+/** The order's first delivery: makes its GRN, with one line per order line. */
+export async function createGoodsReceivedNote({ internalRequisitionId, ...delivery }: CreateGoodsReceivedNoteBody, actor: Actor) {
   const { timezone } = await getSettings()
-
   const { id } = await db.$transaction(async (tx) => {
     // Locks the IR, so its order can't be cancelled or given another GRN meanwhile.
     await lockRequisition(tx, internalRequisitionId)
     const order = await loadOrder(internalRequisitionId, tx)
     if (!order) throw new BadRequestError(`Internal requisition ${internalRequisitionId} doesn't exist or is deleted`)
-    const problem = newGoodsReceivedNoteProblem(order)
+    if (order.note) {
+      throw new GoodsReceivedNoteSourceError(
+        `${order.requisition.internalRequisitionNumber} already has ${order.note.grnNumber}: record the delivery on it`,
+      )
+    }
+    const problem = deliveryProblem(order)
     if (problem) throw new GoodsReceivedNoteSourceError(problem)
 
-    const lines = buildLines(items, order)
-    const status = await savedStatus(tx)
     const note = await tx.goodsReceivedNote.create({
-      data: {
-        ...data,
-        internalRequisitionId,
-        supplierId: order.supplier.id,
-        receivedDate: data.receivedDate ?? today(timezone),
-        status,
-        createdBy: actor.id,
-      },
+      data: { internalRequisitionId, supplierId: order.supplier.id, status: "partiallyCompleted", createdBy: actor.id },
     })
-    await tx.goodsReceivedNoteItem.createMany({ data: lines.map((line) => ({ ...line, goodsReceivedNoteId: note.id, createdBy: actor.id })) })
-    if (status === "approved") await approveOnSave(tx, note, order, actor)
+    await tx.goodsReceivedNoteItem.createMany({
+      data: order.lines.map((line, index) => ({
+        goodsReceivedNoteId: note.id,
+        lineNo: index + 1,
+        productId: line.productId,
+        orderedQuantity: line.orderedQuantity,
+        createdBy: actor.id,
+      })),
+    })
+    await recordDelivery(tx, note, order, delivery, timezone, actor)
     return note
   })
   return getGoodsReceivedNote(id)
 }
 
-/**
- * Pending and rejected only. Sending `items` replaces every line. Every save sets the status again as on create, so
- * editing a rejected GRN submits it again.
- */
-export async function updateGoodsReceivedNote(id: number, { items, ...data }: UpdateGoodsReceivedNoteBody, actor: Actor) {
+/** A later batch of the order's goods, on its GRN. */
+export async function addDelivery(id: number, delivery: DeliveryBody, actor: Actor) {
+  const { timezone } = await getSettings()
   await db.$transaction(async (tx) => {
     const note = await lockGoodsReceivedNote(tx, id)
-    if (!isOpen(note.status)) throw new GoodsReceivedNoteNotEditableError(id, note.status)
     const order = await orderOf(tx, note)
-    const problem = sourceProblem(order)
+    const problem = deliveryProblem(order)
     if (problem) throw new GoodsReceivedNoteSourceError(problem)
-
-    const modified = { modifiedBy: actor.id, modifiedAt: new Date() }
-    if (items) {
-      const lines = buildLines(items, order)
-      await tx.goodsReceivedNoteItem.updateMany({ where: { goodsReceivedNoteId: id, isDeleted: false }, data: { isDeleted: true, ...modified } })
-      await tx.goodsReceivedNoteItem.createMany({ data: lines.map((line) => ({ ...line, goodsReceivedNoteId: id, createdBy: actor.id })) })
-    }
-    const status = await savedStatus(tx)
-    await tx.goodsReceivedNote.update({ where: { id }, data: { ...data, status, ...modified } })
-    if (status === "approved") await approveOnSave(tx, note, order, actor)
-  })
-  return getGoodsReceivedNote(id)
-}
-
-/** Approves a pending GRN: its goods go into stock, and the PO is completed once the order is received in full. */
-export async function approveGoodsReceivedNote(id: number, actor: Actor) {
-  await db.$transaction(async (tx) => {
-    const note = await lockGoodsReceivedNote(tx, id)
-    if (note.status !== "pending") throw new GoodsReceivedNoteNotPendingError(id, note.status)
-    const order = await orderOf(tx, note)
-    await tx.goodsReceivedNote.update({ where: { id }, data: { status: "approved", modifiedBy: actor.id, modifiedAt: new Date() } })
-    await recordApproval(tx, { screen: SCREEN, documentId: id, decision: "approved" }, actor)
-    await receive(tx, note, order, actor)
-  })
-  return getGoodsReceivedNote(id)
-}
-
-export async function rejectGoodsReceivedNote(id: number, reason: string, actor: Actor) {
-  await db.$transaction(async (tx) => {
-    const note = await lockGoodsReceivedNote(tx, id)
-    if (note.status !== "pending") throw new GoodsReceivedNoteNotPendingError(id, note.status)
-    await tx.goodsReceivedNote.update({ where: { id }, data: { status: "rejected", modifiedBy: actor.id, modifiedAt: new Date() } })
-    await recordApproval(tx, { screen: SCREEN, documentId: id, decision: "rejected", reason }, actor)
-  })
-  return getGoodsReceivedNote(id)
-}
-
-/** Pending and rejected only: nothing has gone into stock yet. */
-export async function cancelGoodsReceivedNote(id: number, reason: string, actor: Actor) {
-  await db.$transaction(async (tx) => {
-    const note = await lockGoodsReceivedNote(tx, id)
-    if (!isOpen(note.status)) throw new GoodsReceivedNoteNotCancellableError(id, note.status)
-    await tx.goodsReceivedNote.update({ where: { id }, data: { status: "cancelled", ...cancelColumns(reason, actor) } })
+    await recordDelivery(tx, note, order, delivery, timezone, actor)
   })
   return getGoodsReceivedNote(id)
 }
 
 /**
- * For the IR's and the PO's cancel, in their transaction with the IR row locked: refuses once the order has received
- * goods (an approved GRN), and cancels its open GRN, if it has one, with the same reason.
+ * Serials for units of a serial-tracked line that arrived without them yet: each becomes a unit in stock (+1 stock in
+ * hand), on the oldest delivery that still misses serials for the product.
  */
-export async function cancelGoodsReceivedNotesOfRequisition(
-  tx: Prisma.TransactionClient,
-  internalRequisitionId: number,
-  reason: string,
-  actor: Actor,
-) {
+export async function addSerials(id: number, { productId, units }: AddSerialsBody, actor: Actor) {
+  await db.$transaction(async (tx) => {
+    const note = await lockGoodsReceivedNote(tx, id)
+    const line = await tx.goodsReceivedNoteItem.findFirst({
+      where: { goodsReceivedNoteId: id, productId, isDeleted: false },
+      select: { product: { select: { sku: true, trackingType: true } } },
+    })
+    if (!line) throw new BadRequestError(`Product ${productId} isn't on ${note.grnNumber}`)
+    if (line.product.trackingType !== "serial") throw new GoodsReceivedNoteSerialsError(`${line.product.sku} isn't tracked by serial number`)
+
+    // What each delivery brought of the product, oldest first, and how many of those already have serials (imported
+    // deliveries need none).
+    const delivered = await tx.goodsReceivedNoteDeliveryItem.findMany({
+      where: { productId, isDeleted: false, delivery: { goodsReceivedNoteId: id, isImported: false, isDeleted: false } },
+      select: { quantity: true, delivery: { select: { id: true, deliveryNo: true } } },
+      orderBy: { delivery: { deliveryNo: "asc" } },
+    })
+    const entered = await tx.serialItem.groupBy({
+      by: ["goodsReceivedNoteDeliveryId"],
+      where: { productId, isDeleted: false, goodsReceivedNoteDelivery: { goodsReceivedNoteId: id } },
+      _count: { _all: true },
+    })
+    const gaps = delivered.map(({ quantity, delivery }) => ({
+      delivery,
+      missing: quantity - (entered.find((row) => row.goodsReceivedNoteDeliveryId === delivery.id)?._count._all ?? 0),
+    }))
+    const missing = gaps.reduce((total, gap) => total + gap.missing, 0)
+    if (units.length > missing) {
+      throw new GoodsReceivedNoteSerialsError(`${line.product.sku}: ${missing} serial(s) still to add, ${units.length} given`)
+    }
+
+    await tx.$executeRaw`SELECT 1 FROM "Product" WHERE id = ${productId} FOR UPDATE`
+    let rest = units
+    for (const { delivery, missing: gap } of gaps) {
+      const chunk = rest.slice(0, Math.max(gap, 0))
+      rest = rest.slice(chunk.length)
+      if (chunk.length === 0) continue
+      const remarks = `${note.grnNumber} delivery ${delivery.deliveryNo}`
+      await addUnits(tx, productId, chunk, { goodsReceivedNoteDeliveryId: delivery.id, remarks }, actor)
+    }
+    await changeStock(tx, [{ productId, quantity: units.length }], grnSource(note, "Serial numbers added on the GRN"), actor)
+    await refreshStatus(tx, id, actor)
+  })
+  return getGoodsReceivedNote(id)
+}
+
+/**
+ * For the IR's and the PO's cancel, in their transaction with the IR row locked: once goods have started to arrive
+ * (the order has a GRN) the order can't be cancelled.
+ */
+export async function assertNoGoodsReceived(tx: Prisma.TransactionClient, internalRequisitionId: number) {
   const received = await tx.goodsReceivedNote.findFirst({
-    where: { internalRequisitionId, status: "approved", isDeleted: false },
+    where: { internalRequisitionId, isDeleted: false },
     select: { grnNumber: true, internalRequisition: { select: { internalRequisitionNumber: true } } },
   })
   if (received) throw new GoodsAlreadyReceivedError(received.internalRequisition.internalRequisitionNumber, received.grnNumber)
-  await tx.goodsReceivedNote.updateMany({
-    where: { internalRequisitionId, status: { in: openStatuses }, isDeleted: false },
-    data: { status: "cancelled", ...cancelColumns(reason, actor) },
-  })
 }
 
 type Order = NonNullable<Awaited<ReturnType<typeof loadOrder>>>
 
 /**
  * The IR with what a GRN receives against: its order lines (the PO's for a local IR, none until it has one; the IR's
- * for an international one), each with what the order's approved GRNs received and what is still outstanding, and its
- * GRNs, newest first. null when the IR doesn't exist or is deleted. Pass `tx` to read inside a transaction.
+ * for an international one), each with what its GRN has received and what is still outstanding, and the GRN, if it has
+ * one. null when the IR doesn't exist or is deleted. Pass `tx` to read inside a transaction.
  */
 async function loadOrder(internalRequisitionId: number, tx?: Prisma.TransactionClient) {
   const args = {
@@ -264,12 +288,10 @@ async function loadOrder(internalRequisitionId: number, tx?: Prisma.TransactionC
       purchaseOrder: { select: { id: true, purchaseOrderNumber: true, status: true, supplier: supplierRef, items: orderLineSelect } },
       goodsReceivedNotes: {
         where: { isDeleted: false },
-        orderBy: { id: "desc" },
         select: {
           id: true,
           grnNumber: true,
           status: true,
-          receivedDate: true,
           items: { where: { isDeleted: false }, select: { productId: true, receivedQuantity: true } },
         },
       },
@@ -278,154 +300,152 @@ async function loadOrder(internalRequisitionId: number, tx?: Prisma.TransactionC
   const requisition = tx ? await tx.internalRequisition.findUnique(args) : await db.internalRequisition.findUnique(args)
   if (!requisition || requisition.isDeleted) return null
 
-  const { purchaseOrder, goodsReceivedNotes } = requisition
-  const received = new Map<string, number>()
-  for (const note of goodsReceivedNotes.filter((grn) => grn.status === "approved")) {
-    for (const item of note.items) received.set(item.productId, (received.get(item.productId) ?? 0) + item.receivedQuantity)
-  }
+  const { purchaseOrder } = requisition
+  const note = requisition.goodsReceivedNotes[0] ?? null
+  const received = new Map((note?.items ?? []).map((item) => [item.productId, item.receivedQuantity]))
   const orderLines = requisition.isInternational ? requisition.items : (purchaseOrder?.items ?? [])
   const lines = orderLines.map(({ productId, product, quantity }) => {
     const receivedQuantity = received.get(productId) ?? 0
     return { productId, product, orderedQuantity: quantity, receivedQuantity, outstandingQuantity: Math.max(0, quantity - receivedQuantity) }
   })
   // The goods come from the PO's supplier, which can differ from the IR's.
-  return { requisition, purchaseOrder, supplier: (purchaseOrder ?? requisition).supplier, lines, goodsReceivedNotes }
+  return { requisition, purchaseOrder, supplier: (purchaseOrder ?? requisition).supplier, lines, note }
 }
 
-/** Why the order can't receive goods at all (the IR's or PO's status), or null. */
-function sourceProblem({ requisition, purchaseOrder }: Order) {
+/** Why the order can't receive goods: the IR's or PO's status, or everything has arrived. null when it can. */
+function deliveryProblem({ requisition, purchaseOrder, lines, note }: Order) {
   const number = requisition.internalRequisitionNumber
+  if (lines.length > 0 && lines.every((line) => line.outstandingQuantity === 0)) return `Everything ordered on ${number} has been received`
+  // Once it has a GRN, its source was approved and can no longer be cancelled.
+  if (note) return null
   if (requisition.isInternational) {
     return requisition.status === "approved" ? null : `${number} is ${requisition.status}; goods are received on an approved international IR`
   }
   if (!purchaseOrder) return `${number} has no purchase order yet`
   const { purchaseOrderNumber, status } = purchaseOrder
-  if (status === "completed") return `Purchase order ${purchaseOrderNumber} has been received in full`
   return status === "approved" ? null : `Purchase order ${purchaseOrderNumber} is ${status}; goods are received on an approved purchase order`
 }
 
-/** Why a new GRN can't be made for the order now, or null. */
-function newGoodsReceivedNoteProblem(order: Order) {
-  const open = order.goodsReceivedNotes.find((note) => isOpen(note.status))
-  if (open) return `${open.grnNumber} is still ${open.status}: approve, edit or cancel it first`
-  const problem = sourceProblem(order)
-  if (problem) return problem
-  if (order.lines.every((line) => line.outstandingQuantity === 0)) {
-    return `Everything ordered on ${order.requisition.internalRequisitionNumber} has been received`
-  }
-  return null
-}
-
-/** One line per order line, in the order's order, with what the client says came; checked against what's outstanding. */
-function buildLines(items: GoodsReceivedNoteItemInput[], order: Order) {
-  const byProduct = new Map(items.map((item) => [item.productId, item]))
-  const stranger = items.find((item) => !order.lines.some((line) => line.productId === item.productId))
-  if (stranger) throw new BadRequestError(`Product ${stranger.productId} isn't on the order`)
-
-  const lines = order.lines.map((line, index) => {
-    const item = byProduct.get(line.productId)
-    if (!item) throw new BadRequestError(`Add a line for ${line.product.sku}, with 0 if none of it came`)
-    return {
-      lineNo: index + 1,
-      productId: line.productId,
-      orderedQuantity: line.orderedQuantity,
-      receivedQuantity: item.receivedQuantity,
-      remarks: item.remarks,
-    }
-  })
-  assertWithinOutstanding(lines, order)
-  return lines
-}
-
-function assertWithinOutstanding(lines: readonly { productId: string; receivedQuantity: number }[], order: Order) {
-  for (const { productId, receivedQuantity } of lines) {
-    const line = order.lines.find((orderLine) => orderLine.productId === productId)
-    const outstanding = line?.outstandingQuantity ?? 0
-    if (receivedQuantity > outstanding) {
+/**
+ * Saves one delivery on the GRN: its lines (what came, at most what is outstanding), the GRN's received totals,
+ * quantity-tracked goods into stock, the PO completed when everything has arrived, and the GRN's status.
+ */
+async function recordDelivery(
+  tx: Prisma.TransactionClient,
+  note: { id: number; grnNumber: string },
+  order: Order,
+  { receivedDate, supplierInvoiceNumber, remarks, items }: DeliveryBody,
+  timezone: string,
+  actor: Actor,
+) {
+  const received = items.filter((item) => item.quantity > 0)
+  for (const item of received) {
+    const line = order.lines.find((orderLine) => orderLine.productId === item.productId)
+    if (!line) throw new BadRequestError(`Product ${item.productId} isn't on the order`)
+    if (item.quantity > line.outstandingQuantity) {
       throw new GoodsReceivedNoteQuantityError(
-        `${line?.product.sku ?? productId}: ${receivedQuantity} received, but only ${outstanding} still outstanding on the order`,
+        `${line.product.sku}: ${item.quantity} received, but only ${line.outstandingQuantity} still outstanding on the order`,
       )
     }
   }
-}
 
-/**
- * For a GRN that has just been approved, in that transaction: puts its goods in stock, and completes the PO when the
- * order has now been received in full. `order` was loaded before the approval, so it doesn't count this GRN yet.
- */
-async function receive(tx: Prisma.TransactionClient, note: { id: number; grnNumber: string }, order: Order, actor: Actor) {
-  const items = await tx.goodsReceivedNoteItem.findMany({
-    where: { goodsReceivedNoteId: note.id, isDeleted: false },
-    select: { productId: true, receivedQuantity: true },
-  })
-  assertWithinOutstanding(items, order)
-  await addToStock(tx, items, note.grnNumber, actor)
-
-  const receivedNow = new Map(items.map((item) => [item.productId, item.receivedQuantity]))
-  const isComplete = order.lines.every((line) => line.outstandingQuantity <= (receivedNow.get(line.productId) ?? 0))
-  if (isComplete && order.purchaseOrder) {
-    await tx.purchaseOrder.update({
-      where: { id: order.purchaseOrder.id },
-      data: { status: "completed", modifiedBy: actor.id, modifiedAt: new Date() },
-    })
-  }
-}
-
-/**
- * Adds each quantity to the product's stock in hand and records it as a StockMovement. Products in id order, the order
- * invoices lock them in, so the two can't deadlock.
- */
-async function addToStock(
-  tx: Prisma.TransactionClient,
-  items: readonly { productId: string; receivedQuantity: number }[],
-  reference: string,
-  actor: Actor,
-) {
-  const received = items.filter((item) => item.receivedQuantity > 0).toSorted((a, b) => (a.productId < b.productId ? -1 : 1))
-  const movements: Prisma.StockMovementCreateManyInput[] = []
-  for (const { productId, receivedQuantity } of received) {
-    const { stockInHand } = await tx.product.update({
-      where: { id: productId },
-      data: { stockInHand: { increment: receivedQuantity } },
-      select: { stockInHand: true },
-    })
-    movements.push({
-      productId,
-      bucket: "inHand",
-      quantity: receivedQuantity,
-      balanceAfter: stockInHand,
-      reference,
-      remarks: "GRN approved",
+  const deliveryNo = (await tx.goodsReceivedNoteDelivery.count({ where: { goodsReceivedNoteId: note.id } })) + 1
+  const delivery = await tx.goodsReceivedNoteDelivery.create({
+    data: {
+      goodsReceivedNoteId: note.id,
+      deliveryNo,
+      receivedDate: receivedDate ?? today(timezone),
+      supplierInvoiceNumber,
+      remarks,
       createdBy: actor.id,
+    },
+  })
+  // The GRN line of each product (one per product: index "GoodsReceivedNoteItem_product_key").
+  const lines = await tx.goodsReceivedNoteItem.findMany({
+    where: { goodsReceivedNoteId: note.id, isDeleted: false },
+    select: { id: true, productId: true },
+  })
+  const lineIdOf = (productId: string) => lines.find((line) => line.productId === productId)!.id
+  await tx.goodsReceivedNoteDeliveryItem.createMany({
+    data: received.map((item) => ({ deliveryId: delivery.id, goodsReceivedNoteItemId: lineIdOf(item.productId), ...item, createdBy: actor.id })),
+  })
+  const modified = { modifiedBy: actor.id, modifiedAt: new Date() }
+  for (const { productId, quantity } of received) {
+    await tx.goodsReceivedNoteItem.update({
+      where: { id: lineIdOf(productId) },
+      data: { receivedQuantity: { increment: quantity }, ...modified },
     })
   }
-  await tx.stockMovement.createMany({ data: movements })
+
+  const counted = received.filter((item) => order.lines.find((line) => line.productId === item.productId)?.product.trackingType === "quantity")
+  await changeStock(tx, counted, grnSource(note, `GRN delivery ${deliveryNo}`), actor)
+
+  const outstandingAfter = order.lines.some((line) => line.outstandingQuantity > (received.find((item) => item.productId === line.productId)?.quantity ?? 0))
+  if (!outstandingAfter && order.purchaseOrder) {
+    await tx.purchaseOrder.update({ where: { id: order.purchaseOrder.id }, data: { status: "completed", ...modified } })
+  }
+  await refreshStatus(tx, note.id, actor)
 }
 
-/** pending, or approved when GRNs don't need approval now. */
-async function savedStatus(tx: Prisma.TransactionClient): Promise<GoodsReceivedNoteStatus> {
-  return (await isApprovalRequired(SCREEN, tx)) ? "pending" : "approved"
+/** Sets the GRN's status from its lines and their serials. */
+async function refreshStatus(tx: Prisma.TransactionClient, id: number, actor: Actor) {
+  const [items, serials, imported] = await Promise.all([
+    tx.goodsReceivedNoteItem.findMany({
+      where: { goodsReceivedNoteId: id, isDeleted: false },
+      select: { productId: true, orderedQuantity: true, receivedQuantity: true, product: { select: { trackingType: true } } },
+    }),
+    serialCounts(tx, id),
+    importedQuantities(tx, id),
+  ])
+  const missesSerials = items.some(
+    (item) =>
+      item.product.trackingType === "serial" &&
+      item.receivedQuantity - (imported.get(item.productId) ?? 0) > (serials.get(item.productId) ?? 0),
+  )
+  const status: GoodsReceivedNoteStatus = missesSerials
+    ? "needSerialNumbers"
+    : items.some((item) => item.receivedQuantity < item.orderedQuantity)
+      ? "partiallyCompleted"
+      : "completed"
+  await tx.goodsReceivedNote.update({ where: { id }, data: { status, modifiedBy: actor.id, modifiedAt: new Date() } })
 }
 
-async function approveOnSave(tx: Prisma.TransactionClient, note: { id: number; grnNumber: string }, order: Order, actor: Actor) {
-  await recordApproval(tx, { screen: SCREEN, documentId: note.id, decision: "approved", isAutomatic: true }, actor)
-  await receive(tx, note, order, actor)
+/** Units with serials per product, over the GRN's deliveries. */
+async function serialCounts(reader: Prisma.TransactionClient | typeof db, goodsReceivedNoteId: number) {
+  const rows = await reader.serialItem.groupBy({
+    by: ["productId"],
+    where: { isDeleted: false, goodsReceivedNoteDelivery: { goodsReceivedNoteId } },
+    _count: { _all: true },
+  })
+  return new Map(rows.map((row) => [row.productId, row._count._all]))
+}
+
+/** What each product received on imported deliveries (recorded in the old system), whose units need no serials. */
+async function importedQuantities(reader: Prisma.TransactionClient | typeof db, goodsReceivedNoteId: number) {
+  const rows = await reader.goodsReceivedNoteDeliveryItem.groupBy({
+    by: ["productId"],
+    where: { isDeleted: false, delivery: { goodsReceivedNoteId, isImported: true, isDeleted: false } },
+    _sum: { quantity: true },
+  })
+  return new Map(rows.map((row) => [row.productId, row._sum.quantity ?? 0]))
+}
+
+/** The GRN as the source of its stock movements. */
+function grnSource(note: { id: number; grnNumber: string }, remarks: string) {
+  return { goodsReceivedNoteId: note.id, reference: note.grnNumber, remarks }
 }
 
 function lockRequisition(tx: Prisma.TransactionClient, internalRequisitionId: number) {
   return tx.$executeRaw`SELECT 1 FROM "InternalRequisition" WHERE id = ${internalRequisitionId} FOR UPDATE`
 }
 
-/** Locks the GRN's IR, then the GRN, and returns the GRN as it is now. 404 when it doesn't exist or is deleted. */
+/** Locks the GRN's IR, then the GRN, and returns the GRN. 404 when it doesn't exist or is deleted. */
 async function lockGoodsReceivedNote(tx: Prisma.TransactionClient, id: number) {
   const found = await tx.goodsReceivedNote.findUnique({ where: { id }, select: { internalRequisitionId: true, isDeleted: true } })
   if (!found || found.isDeleted) throw new NotFoundError("GRN", String(id))
   await lockRequisition(tx, found.internalRequisitionId)
   await tx.$executeRaw`SELECT 1 FROM "GoodsReceivedNote" WHERE id = ${id} FOR UPDATE`
-  return tx.goodsReceivedNote.findUniqueOrThrow({
-    where: { id },
-    select: { id: true, grnNumber: true, status: true, internalRequisitionId: true },
-  })
+  return tx.goodsReceivedNote.findUniqueOrThrow({ where: { id }, select: { id: true, grnNumber: true, internalRequisitionId: true } })
 }
 
 /** The order of a GRN that exists; its IR can't be removed (Restrict) or deleted (IRs are cancelled, not deleted). */
@@ -433,15 +453,4 @@ async function orderOf(tx: Prisma.TransactionClient, note: { internalRequisition
   const order = await loadOrder(note.internalRequisitionId, tx)
   if (!order) throw new NotFoundError("Internal requisition", String(note.internalRequisitionId))
   return order
-}
-
-function cancelColumns(reason: string, actor: Actor) {
-  const now = new Date()
-  return { cancelReason: reason, cancelledBy: actor.id, cancelledAt: now, modifiedBy: actor.id, modifiedAt: now }
-}
-
-/** Today's date in the company timezone, as a @db.Date value. */
-function today(timezone: string) {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
-  return new Date(`${day}T00:00:00.000Z`)
 }
