@@ -6,7 +6,9 @@ import {
   createInternalRequisitionBody,
   internalRequisition,
   internalRequisitionIdParams,
+  internalRequisitionIdsQuery,
   internalRequisitionPage,
+  internalRequisitionSummaryList,
   listInternalRequisitionsQuery,
   updateInternalRequisitionBody,
 } from "./internal-requisitions.schema.js"
@@ -16,6 +18,7 @@ import {
   createInternalRequisition,
   getInternalRequisition,
   listInternalRequisitions,
+  listInternalRequisitionsByIds,
   rejectInternalRequisition,
   updateInternalRequisition,
 } from "./internal-requisitions.service.js"
@@ -29,6 +32,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "INTERNAL_REQUISITIONS.VIEW", cache: ["InternalRequisition", "Supplier", "User"] },
     },
     (req) => listInternalRequisitions(req.query),
+  )
+
+  // The rows a live `internalRequisition` event names (GET /api/v1/events), so a client keeping the whole list reloads only those.
+  // Not cached: the event can arrive before the InternalRequisition cache is cleared, and a cached copy would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: internalRequisitionIdsQuery, response: { 200: internalRequisitionSummaryList } },
+      config: { permission: "INTERNAL_REQUISITIONS.VIEW" },
+    },
+    (req) => listInternalRequisitionsByIds(req.query.ids),
   )
 
   app.get(

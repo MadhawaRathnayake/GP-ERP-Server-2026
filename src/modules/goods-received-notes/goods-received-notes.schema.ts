@@ -110,6 +110,17 @@ export const goodsReceivedNote = goodsReceivedNoteSummary.extend({
 
 export const goodsReceivedNotePage = pageResult(goodsReceivedNoteSummary)
 
+export const goodsReceivedNoteIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated GRN ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated GRN ids, at most 100"),
+})
+
+export const goodsReceivedNoteSummaryList = z.array(goodsReceivedNoteSummary)
+
 // What an order (an IR, with its PO when local) has received so far, for the GRN form and the IR and PO pages.
 export const orderReceipt = z.object({
   internalRequisitionId: z.number().int(),

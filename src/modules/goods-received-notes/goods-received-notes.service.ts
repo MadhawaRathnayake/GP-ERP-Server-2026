@@ -119,6 +119,11 @@ export function listGoodsReceivedNotes({ q, status, supplierId, ...page }: ListG
   )
 }
 
+/** List rows of just these GRNs, e.g. the ones a live `goodsReceivedNote` event named. */
+export function listGoodsReceivedNotesByIds(ids: number[]) {
+  return db.goodsReceivedNote.findMany({ where: { id: { in: ids }, isDeleted: false }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getGoodsReceivedNote(id: number) {
   const [note, serials, imported] = await Promise.all([
     db.goodsReceivedNote.findUnique({ where: { id }, include: detailInclude }),

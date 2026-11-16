@@ -92,6 +92,11 @@ export function listPurchaseOrders({ q, status, supplierId, ...page }: ListPurch
   )
 }
 
+/** List rows of just these purchase orders, e.g. the ones a live `purchaseOrder` event named. */
+export function listPurchaseOrdersByIds(ids: number[]) {
+  return db.purchaseOrder.findMany({ where: { id: { in: ids }, isDeleted: false }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getPurchaseOrder(id: number) {
   const [order, approvals] = await Promise.all([
     db.purchaseOrder.findUnique({ where: { id }, include: detailInclude }),

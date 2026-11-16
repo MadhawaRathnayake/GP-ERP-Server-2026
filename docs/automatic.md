@@ -38,7 +38,7 @@ Things that run without anyone calling them. If something "just works", it's pro
 
 ## Live updates
 
-Browsers keep stock and the invoice and quotation lists live through one stream, `GET /api/v1/events` (`modules/events`), open to
+Browsers keep stock and the document lists (invoices, quotations, delivery notes, internal requisitions, purchase orders, GRNs) live through one stream, `GET /api/v1/events` (`modules/events`), open to
 any signed-in user. Each event reaches only the streams whose user has its permission; the stream reloads its user's
 permissions at every heartbeat, so a role change applies within 25 s.
 
@@ -47,7 +47,8 @@ permissions at every heartbeat, so a role change applies within 25 s.
 | `stock` | `PRODUCTS.VIEW` | live stock, below |
 | `invoice` `{ id }` | `INVOICES.VIEW` | trigger `Invoice_notify_invoice_change` (migration `20261116090000_invoice_change_events`): after every insert or update of an invoice, its id on channel `invoice_change`, read by `modules/invoices/invoices.events.ts`. Clients reload those rows with `GET /api/v1/invoices/by-ids` (not cached: the event can arrive before the cache is cleared). Postgres drops duplicates within a transaction; a bulk import sends one event per invoice |
 | `quotation` `{ id }` | `QUOTATIONS.VIEW` | trigger `Quotation_notify_quotation_change` (migration `20261116100000_quotation_change_events`), the same way as invoices. `GET /api/v1/quotations/by-ids` also returns deleted ones (`isDeleted`), so clients take them out of the list |
-| `resync` | everyone | after db-events reconnects (notifications sent meanwhile are lost): clients reload `GET /api/v1/stock` and the newest invoices and quotations |
+| `deliveryNote`, `internalRequisition`, `purchaseOrder`, `goodsReceivedNote` `{ id }` | their screen's `VIEW` | migration `20261116110000_document_change_events`: one function `notify_document_change(channel)` and a trigger per table, the same way as invoices; a GRN delivery announces its GRN (the list row shows the deliveries). Each has `GET /api/v1/<screen>/by-ids` |
+| `resync` | everyone | after db-events reconnects (notifications sent meanwhile are lost): clients reload `GET /api/v1/stock` and the newest 100 of each live document list |
 
 ### Live stock
 

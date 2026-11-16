@@ -84,6 +84,11 @@ export function listInternalRequisitions({ q, status, supplierId, ...page }: Lis
   )
 }
 
+/** List rows of just these internal requisitions, e.g. the ones a live `internalRequisition` event named. */
+export function listInternalRequisitionsByIds(ids: number[]) {
+  return db.internalRequisition.findMany({ where: { id: { in: ids }, isDeleted: false }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getInternalRequisition(id: number) {
   const [requisition, approvals] = await Promise.all([
     db.internalRequisition.findUnique({ where: { id }, include: detailInclude }),

@@ -88,5 +88,6 @@
 | `20261114100000_serial_item_used_for_repair` | `SerialItemStatus` gets `usedForRepair` (a unit used as a repair part; set by the repairs module, not built yet) |
 | `20261116090000_invoice_change_events` | Live invoices: `notify_invoice_change()` and trigger `Invoice_notify_invoice_change` (after every insert or update, the invoice's id on channel `invoice_change`; [automatic.md](automatic.md#live-updates)) |
 | `20261116100000_quotation_change_events` | Live quotations: `notify_quotation_change()` and trigger `Quotation_notify_quotation_change` (after every insert or update, the quotation's id on channel `quotation_change`) |
+| `20261116110000_document_change_events` | Live delivery notes, internal requisitions, purchase orders and GRNs: `notify_document_change()` (sends the row's id on the channel given as the trigger's argument) with a trigger on each table, and `notify_goods_received_note_delivery_change()` on `GoodsReceivedNoteDelivery` (announces its GRN) |
 
 Add a row for every new migration.

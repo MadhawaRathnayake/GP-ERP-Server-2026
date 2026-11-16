@@ -88,6 +88,17 @@ export const deliveryNote = deliveryNoteSummary.extend({
 
 export const deliveryNotePage = pageResult(deliveryNoteSummary)
 
+export const deliveryNoteIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated delivery note ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated delivery note ids, at most 100"),
+})
+
+export const deliveryNoteSummaryList = z.array(deliveryNoteSummary)
+
 export const listDeliveryNotesQuery = pageQuery.extend({
   status: deliveryNoteStatus.optional(),
   invoiceId: intId.optional(),

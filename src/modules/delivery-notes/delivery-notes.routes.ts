@@ -4,7 +4,9 @@ import { dropdownUserList } from "#modules/dropdowns/dropdowns.schema.js"
 import {
   deliveryNote,
   deliveryNoteIdParams,
+  deliveryNoteIdsQuery,
   deliveryNotePage,
+  deliveryNoteSummaryList,
   listDeliveryNotesQuery,
   setItemIssuerBody,
   setItemVerifierBody,
@@ -12,6 +14,7 @@ import {
 import {
   getDeliveryNote,
   listDeliveryNotes,
+  listDeliveryNotesByIds,
   listItemIssuers,
   listItemVerifiers,
   setItemIssuer,
@@ -27,6 +30,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "DELIVERY_NOTES.VIEW", cache: ["DeliveryNote", "Invoice", "Customer", "User"] },
     },
     (req) => listDeliveryNotes(req.query),
+  )
+
+  // The rows a live `deliveryNote` event names (GET /api/v1/events), so a client keeping the whole list reloads only those.
+  // Not cached: the event can arrive before the DeliveryNote cache is cleared, and a cached copy would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: deliveryNoteIdsQuery, response: { 200: deliveryNoteSummaryList } },
+      config: { permission: "DELIVERY_NOTES.VIEW" },
+    },
+    (req) => listDeliveryNotesByIds(req.query.ids),
   )
 
   // For the item verifier and item issuer dropdowns (Admin → Dropdowns).

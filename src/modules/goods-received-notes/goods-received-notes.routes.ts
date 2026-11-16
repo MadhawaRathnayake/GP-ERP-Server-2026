@@ -6,7 +6,9 @@ import {
   deliveryBody,
   goodsReceivedNote,
   goodsReceivedNoteIdParams,
+  goodsReceivedNoteIdsQuery,
   goodsReceivedNotePage,
+  goodsReceivedNoteSummaryList,
   listGoodsReceivedNotesQuery,
   orderParams,
   orderReceipt,
@@ -18,6 +20,7 @@ import {
   getGoodsReceivedNote,
   getOrderReceipt,
   listGoodsReceivedNotes,
+  listGoodsReceivedNotesByIds,
 } from "./goods-received-notes.service.js"
 
 const detailTables = [
@@ -45,6 +48,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     (req) => listGoodsReceivedNotes(req.query),
+  )
+
+  // The rows a live `goodsReceivedNote` event names (GET /api/v1/events), so a client keeping the whole list reloads only those.
+  // Not cached: the event can arrive before the GoodsReceivedNote cache is cleared, and a cached copy would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: goodsReceivedNoteIdsQuery, response: { 200: goodsReceivedNoteSummaryList } },
+      config: { permission: "GOODS_RECEIVED_NOTES.VIEW" },
+    },
+    (req) => listGoodsReceivedNotesByIds(req.query.ids),
   )
 
   app.get(

@@ -84,6 +84,17 @@ export const purchaseOrder = purchaseOrderSummary.extend({
 
 export const purchaseOrderPage = pageResult(purchaseOrderSummary)
 
+export const purchaseOrderIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated purchase order ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated purchase order ids, at most 100"),
+})
+
+export const purchaseOrderSummaryList = z.array(purchaseOrderSummary)
+
 export const listPurchaseOrdersQuery = pageQuery.extend({
   q: z.string().trim().min(1).optional().describe("Case-insensitive partial match on the PO or IR number or the supplier's code or name"),
   status: purchaseOrderStatus.optional(),

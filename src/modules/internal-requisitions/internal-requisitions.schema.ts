@@ -74,6 +74,17 @@ export const internalRequisition = internalRequisitionSummary.extend({
 
 export const internalRequisitionPage = pageResult(internalRequisitionSummary)
 
+export const internalRequisitionIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated internal requisition ids")
+    .transform((text) => [...new Set(text.split(",").map(Number))])
+    .pipe(z.array(z.number().int().max(2147483647)).max(100))
+    .describe("Comma-separated internal requisition ids, at most 100"),
+})
+
+export const internalRequisitionSummaryList = z.array(internalRequisitionSummary)
+
 export const listInternalRequisitionsQuery = pageQuery.extend({
   q: z.string().trim().min(1).optional().describe("Case-insensitive partial match on the IR number or the supplier's code or name"),
   status: internalRequisitionStatus.optional(),

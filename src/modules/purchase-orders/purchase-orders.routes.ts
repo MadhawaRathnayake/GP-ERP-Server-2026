@@ -7,7 +7,9 @@ import {
   listPurchaseOrdersQuery,
   purchaseOrder,
   purchaseOrderIdParams,
+  purchaseOrderIdsQuery,
   purchaseOrderPage,
+  purchaseOrderSummaryList,
   updatePurchaseOrderBody,
 } from "./purchase-orders.schema.js"
 import {
@@ -16,6 +18,7 @@ import {
   createPurchaseOrder,
   getPurchaseOrder,
   listPurchaseOrders,
+  listPurchaseOrdersByIds,
   rejectPurchaseOrder,
   updatePurchaseOrder,
 } from "./purchase-orders.service.js"
@@ -29,6 +32,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "PURCHASE_ORDERS.VIEW", cache: ["PurchaseOrder", "InternalRequisition", "Supplier", "User"] },
     },
     (req) => listPurchaseOrders(req.query),
+  )
+
+  // The rows a live `purchaseOrder` event names (GET /api/v1/events), so a client keeping the whole list reloads only those.
+  // Not cached: the event can arrive before the PurchaseOrder cache is cleared, and a cached copy would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: purchaseOrderIdsQuery, response: { 200: purchaseOrderSummaryList } },
+      config: { permission: "PURCHASE_ORDERS.VIEW" },
+    },
+    (req) => listPurchaseOrdersByIds(req.query.ids),
   )
 
   app.get(

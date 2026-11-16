@@ -89,6 +89,11 @@ export function listDeliveryNotes({ status, invoiceId, ...page }: ListDeliveryNo
   )
 }
 
+/** List rows of just these delivery notes, e.g. the ones a live `deliveryNote` event named. */
+export function listDeliveryNotesByIds(ids: number[]) {
+  return db.deliveryNote.findMany({ where: { id: { in: ids }, isDeleted: false }, include: summaryInclude, orderBy: { id: "desc" } })
+}
+
 export async function getDeliveryNote(id: number) {
   const note = await db.deliveryNote.findUnique({ where: { id }, include: detailInclude })
   if (!note) throw new NotFoundError("Delivery note", String(id))
