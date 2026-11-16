@@ -3,9 +3,9 @@ import { updateSettingsBody } from "./settings.schema.js"
 
 describe("updateSettingsBody", () => {
   it("accepts valid codes and normalises case", () => {
-    expect(updateSettingsBody.parse({ currency: "lkr", country: "lk", timezone: "Asia/Colombo" })).toEqual({
+    expect(updateSettingsBody.parse({ currency: "lkr", country: "lka", timezone: "Asia/Colombo" })).toEqual({
       currency: "LKR",
-      country: "LK",
+      country: "LKA",
       timezone: "Asia/Colombo",
     })
   })
@@ -21,8 +21,8 @@ describe("updateSettingsBody", () => {
   it.each([
     [{ currency: "XYZ1" }],
     [{ currency: "ABC" }],
-    [{ country: "XX" }],
-    [{ country: "LKA" }],
+    [{ country: "XXX" }],
+    [{ country: "LK" }],
     [{ timezone: "Mars/Olympus" }],
     [{ vatRate: -1 }],
     [{ vatRate: 101 }],

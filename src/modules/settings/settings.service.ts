@@ -47,3 +47,9 @@ export async function updateSettings(data: UpdateSettingsBody, actor: Actor): Pr
   await getSettings() // make sure the row exists
   return toSettings(await db.setting.update({ where: { id: 1 }, data: { ...data, modifiedBy: actor.id, modifiedAt: new Date() } }))
 }
+
+/** Today's date in the company timezone, as a @db.Date value. */
+export function today(timezone: string) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
+  return new Date(`${day}T00:00:00.000Z`)
+}

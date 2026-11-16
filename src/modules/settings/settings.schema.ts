@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { countryCode } from "#modules/countries/countries.schema.js"
 
 const isTimeZone = (tz: string) => {
   try {
@@ -9,16 +10,11 @@ const isTimeZone = (tz: string) => {
   }
 }
 const currencies = new Set(Intl.supportedValuesOf("currency"))
-const regions = new Intl.DisplayNames(["en"], { type: "region" })
 
 export const currency = z
   .string()
   .toUpperCase()
   .refine((c) => currencies.has(c), "Must be an ISO 4217 currency code, e.g. LKR")
-export const country = z
-  .string()
-  .toUpperCase()
-  .refine((c) => /^[A-Z]{2}$/.test(c) && regions.of(c) !== c, "Must be an ISO 3166-1 alpha-2 country code, e.g. LK")
 export const timezone = z.string().refine(isTimeZone, "Must be an IANA time zone, e.g. Asia/Colombo")
 export const vatRate = z
   .number()
@@ -37,7 +33,7 @@ export const settingsResponse = z.object({
 })
 
 export const updateSettingsBody = z
-  .object({ currency, country, timezone, vatRate })
+  .object({ currency, country: countryCode, timezone, vatRate })
   .partial()
   .refine((body) => Object.keys(body).length > 0, "Provide at least one setting to update")
 
