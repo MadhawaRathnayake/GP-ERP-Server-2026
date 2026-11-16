@@ -18,9 +18,10 @@ For how to add an API, permissions, caching and errors, see the [README](README.
  └─────────────────────────────────┬─────────────────────────────────────────┘   └────────┬──────────┘
                                    ▼                                                      ▼
  ┌─ modules/ — business capabilities ────────────────────────────────────────────────────────────────┐
- │  products · categories · customers · suppliers · quotations · users · roles · settings · dropdowns │
- │  · approvals · internal-requisitions · purchase-orders · goods-received-notes · stock · auth       │
- │  · permissions · health                                                                            │
+ │  products · categories · accessories · serial-items · stock · customers · suppliers · countries    │
+ │  · quotations · invoices · delivery-notes · internal-requisitions · purchase-orders                │
+ │  · goods-received-notes · approvals · dropdowns · settings · users · roles · auth · permissions    │
+ │  · health                                                                                          │
  │  services hold the business rules and know nothing about HTTP, cookies or who called them          │
  └─────────────────┬──────────────────────────────────────────────────────┬───────────────────────────┘
                    ▼                                                      ▼
@@ -62,6 +63,26 @@ shutdown. Every other file exports plain functions, values or types.
 | 5 | Services never touch `request`/`reply`. They take plain arguments and an `Actor`. | A route, a job and a webhook can call the same function. | review |
 | 6 | One module may use another module's service functions or errors, never its routes or internals. | Modules stay replaceable. | review |
 | 7 | Only `platform/security/auth.plugin.ts` → `readCredential()` knows how a client sends its session. | Adding a new way to sign in touches one function. | review |
+
+### Functions modules share
+
+These are called by other modules (rule 6). The ones taking a `tx` run inside the caller's transaction.
+
+| Function | Module | Called by |
+|---|---|---|
+| `changeStock(tx, …)`: the only way `stockInHand` changes, with a `StockMovement` per product | `stock` | products (stock adjustments), invoices (finalize, cancel), goods-received-notes (deliveries, serials) |
+| `addUnits(tx, …)`, `removeUnits(tx, …)`, `countUnitsInStock(tx, …)`: serial-tracked units | `serial-items` | products (stock adjustments), goods-received-notes (serials) |
+| `referenceNumbers()`: the old invoice and unit a service or warranty document is about | `quotations` (`quotations.references.ts`) | quotations, invoices |
+| `lineAmounts()`, `quotationTotals()`, `roundMoney()`, `serviceTotals()`: line and document amounts | `quotations` (`quotations.amounts.ts`) | invoices, purchase-orders |
+| `listProductAccessories()`, `setProductAccessories()` | `accessories` | products (`/products/:id/accessories`) |
+| `assertNoGoodsReceived(tx, …)` | `goods-received-notes` | internal-requisitions, purchase-orders (cancel) |
+| `dropdownUsers()`, `isDropdownUser()`: the users a dropdown offers | `dropdowns` | quotations, invoices, delivery-notes |
+| `isApprovalRequired()`, `listApprovals()`, `recordApproval()` | `approvals` | internal-requisitions, purchase-orders |
+| `getSettings()`, `today()`: company settings, today in the company time zone | `settings` | quotations, invoices, purchase-orders, goods-received-notes |
+
+Rows are locked in one order so two transactions can't deadlock: the document (invoice, GRN, internal requisition)
+first, then its products (`SELECT … FOR UPDATE`, id order), then units (id order) and serial numbers (advisory locks,
+sorted).
 
 The aliases are defined in `package.json` → `imports`. The `development` condition points them at the `.ts` sources
 for `tsc`, `tsx` and vitest, and plain `node` in production gets `dist/`. Every entry point therefore runs with

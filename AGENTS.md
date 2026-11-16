@@ -102,7 +102,7 @@ Report each item as done or not done. A feature isn't finished until all of them
   Prisma checksums them. Mark hand-written SQL with `-- hand-written:`. Timestamps are `@db.Timestamptz(3)`; money is
   `Decimal @db.Decimal(14, 2)` with `money` from `#http/fields.js`.
 - **Every table ends with the audit columns, in this order:** `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`,
-  `isDeleted`. The only exceptions are `Session` and `RolePermission`. Copy them from an existing model (e.g. `Product`): `createdBy`/`modifiedBy`
+  `isDeleted`. The only exceptions are `Session` and the link tables (`RolePermission`, `UserDropdownUser`, `UserDropdownRole`). Copy them from an existing model (e.g. `Product`): `createdBy`/`modifiedBy`
   link to `User` and are set from the actor (NULL = written by the system); `modifiedAt` is NULL until the first change
   (no `updatedAt`); `isDeleted = true` is a soft delete. `test/schema.test.ts` fails if a table breaks this.
 - **Users:** ids are `USER00001…` from `next_user_id()`. Delete is soft (`isDeleted = true`). The audit columns
@@ -117,18 +117,19 @@ Procurement (internal requisitions, purchase orders, GRNs) starts from `docs/pla
 
 ## Modules not built yet (referenced by quotations and invoices)
 
-Repairs (repair received notes), Troubleshoots and Serial numbers don't exist yet. (Invoices exist:
-`src/modules/invoices/`; `oldInvoiceId` still holds an invoice number from the old system, as free text.) `Quotation` already has
-columns for them: `repairReceiveNoteId` (service), `troubleshootId` (warranty), `oldInvoiceId` and
-`oldSerialNumberId` (service and warranty). Until each module exists, its column is optional free text with **no
-foreign key and no check**, and the frontend select for it has no options (shows "Not available yet"). Don't treat
+Repairs (repair received notes) and Troubleshoots don't exist yet. `Quotation` already has columns for them:
+`repairReceiveNoteId` (service) and `troubleshootId` (warranty). (The old invoice and the old unit of service and warranty
+quotations are links since `20261112150000_reference_links`: `oldInvoiceId` / `oldSerialItemId` with the number copied
+into `oldInvoiceNumber` / `oldSerialNumber` by `quotations.references.ts`; imported quotations have the old-system
+number with no link.) Until each module exists, its column is optional free text with **no foreign key and no check**, and the frontend select for it has no options (shows "Not available yet"). Don't treat
 these as real relations, and don't invent tables for them. When you build one of these modules: change the column to
 that table's id type, add the foreign key (hand-written migration), check the id in `quotations.service.ts`, and give
 the select its options in the client's `pages/Quotations/lines.ts` (`referenceOptions`, used by the quotation and
 invoice forms). `productModel` (warranty) is plain text by design, not a reference. `Invoice` copies the same columns
-from its quotation. Invoices also wait for: serial numbers per line, delivering a delivery note (a delivered one
-changes how a cancel gives back the stock), and troubleshoot/repair status updates; see the note at the top of
-`invoices.service.ts`. Delivery notes exist (`src/modules/delivery-notes/`) up to issuing: draft on finalize, item
+from its quotation. Invoices also wait for troubleshoot/repair status updates; see the note at the top of `invoices.service.ts`.
+Serial numbers are being built from `docs/plans/serial-numbers.md` (steps 1–4 done: one stock figure, stock
+adjustments, `modules/serial-items`, `modules/accessories`, GRN deliveries, invoice serials (`invoices.serials.ts`) and
+warranty). Delivery notes exist (`src/modules/delivery-notes/`) up to issuing: draft on finalize, item
 verifier, then item issuer; "Delivered", dispatch date, delivery method and the PDF aren't built yet.
 
 ## Known pitfalls

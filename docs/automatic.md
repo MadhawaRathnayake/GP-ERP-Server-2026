@@ -38,12 +38,13 @@ Things that run without anyone calling them. If something "just works", it's pro
 
 ## Live stock
 
-Two triggers on `Product` (migration `20261105090000_product_stock_version`):
+Two triggers on `Product` (migration `20261105090000_product_stock_version`, reduced to the one stock column by
+`20261112100000_single_stock`):
 
-- `Product_set_stock_version`: when an UPDATE changes any of the four stock columns, sets `stockVersion` to the next
+- `Product_set_stock_version`: when an UPDATE changes `stockInHand`, sets `stockVersion` to the next
   value of `stock_version_seq` (one counter for all products). An update that leaves stock as it was keeps its version.
   A new product starts at 0.
-- `Product_notify_stock_change`: after a version change, sends the product's id, four stock columns and
+- `Product_notify_stock_change`: after a version change, sends the product's id, `stockInHand` and
   `stockVersion` as JSON on channel `stock_change`. Postgres delivers it when the transaction commits; a rollback
   sends nothing.
 

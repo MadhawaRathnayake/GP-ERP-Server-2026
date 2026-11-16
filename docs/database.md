@@ -66,6 +66,7 @@ zod removes every key a request schema doesn't list. The create and update schem
 | ApprovalRule | the screen's code, e.g. `INTERNAL_REQUISITIONS` | `APPROVAL_SCREENS` in `modules/approvals/approvals.ts` | `INTERNAL_REQUISITIONS` |
 | Approval | integer | `autoincrement()` | `1` |
 | RolePermission | `roleId` + `permissionId` together | | |
+| UserDropdownUser, UserDropdownRole | `dropdownId` + `userId` / `roleId` together | | |
 
 - The generators are SQL functions written by hand in a migration, each with its own sequence (`<table>_number_seq`).
   Search `prisma/migrations` for `CREATE FUNCTION next_` to find one.
@@ -82,11 +83,16 @@ zod removes every key a request schema doesn't list. The create and update schem
 - Lists hide deleted rows unless `?includeDeleted=true`. A detail route still returns a deleted row.
 - `PATCH { isDeleted: false }` restores a row.
 - Deleted rows keep their values, so a `@unique` column (e.g. `Product.sku`) stays taken after a delete.
+- Names and codes are unique only among rows that aren't deleted, so a deleted one's name can be used again: partial
+  unique indexes written by hand, ignoring case (`Customer` / `Supplier` `code`, `Category` / `Accessory` / `Role`
+  `name`; `Product.slug`). They aren't in `schema.prisma` (a comment above the model names them), so use
+  `findFirst`, not `findUnique`, to look a row up by one of them. A duplicate is still P2002 → 409.
 
 ## Other rules
 
 - **Audit columns last**, in this order: `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`, `isDeleted`. Only
-  `Session` and `RolePermission` go without them. `test/schema.test.ts` fails otherwise. It checks `schema.prisma`, not
+  `Session` and the link tables (`RolePermission`, `UserDropdownUser`, `UserDropdownRole`) go without them.
+  `test/schema.test.ts` fails otherwise. It checks `schema.prisma`, not
   the database: in the database, `Role.isSystem`, `Role.branchCode` and `Role.parentRoleId` sit after them because they were added to a table with data.
 - **Time:** `@db.Timestamptz(3)`, stored in UTC. The frontend shows it in the company timezone (`Setting.timezone`).
 - **Money:** `Decimal @db.Decimal(14, 2)`, sent as a JSON number through `money` from `#http/fields.js`.
@@ -95,4 +101,10 @@ zod removes every key a request schema doesn't list. The create and update schem
 - **Errors from Prisma** become HTTP errors on their own: unique value taken (P2002) → 409, foreign key broken
   (P2003) → 409, row not found on update (P2025) → 404 (`src/platform/http/error-handler.plugin.ts`).
 - **Indexes:** the primary key already has one; don't add `@@index([id])`. Add one per exact filter or lookup, per
-  foreign key column, and for a list's sort column. Skip columns with only a few values (`isDeleted`, enums).
+  foreign key column, and for a list's sort column. Skip columns with only a few values (`isDeleted`, enums) on their
+  own; a list filtered by status and sorted by id gets `@@index([status, id])`. Case-insensitive `contains` searches
+  get a `pg_trgm` GIN index: `@@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "<Table>_name_trgm_idx")`.
+- **References to users:** the audit columns are `onDelete: SetNull`; every other user reference (sales manager, who
+  confirmed, finalized, cancelled, …) is `onDelete: Restrict`.
+- **Countries** are ISO 3166-1 alpha-3 codes (`LKA`), `@db.Char(3)`, validated with `countryCode` from
+  `#modules/countries/countries.schema.js`; `GET /api/v1/countries` lists them with their names.

@@ -76,7 +76,7 @@ Add the model in its section (e.g. under a new `// ─── Purchases ───
 - Timestamps are `@db.Timestamptz(3)`. Money is `Decimal @db.Decimal(14, 2)`.
 - **The audit columns go last, in this exact order:** `createdBy`, `createdAt`, `modifiedBy`, `modifiedAt`,
   `isDeleted`. `test/schema.test.ts` fails otherwise. Copy them, with their relations, from an existing model. Only
-  `Session` and `RolePermission` go without them.
+  `Session` and the link tables (`RolePermission`, `UserDropdownUser`, `UserDropdownRole`) go without them.
 
 ```prisma
 // ─── Purchases ───────────────────────────────────────────────────────────────
