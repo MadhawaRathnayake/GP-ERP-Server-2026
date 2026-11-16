@@ -5,9 +5,6 @@ import { bigintNumber } from "#http/fields.js"
 export const stockLevel = z.object({
   id: z.string().describe("Product id"),
   stockInHand: z.number().int(),
-  stockPreOrder: z.number().int(),
-  stockInTransit: z.number().int(),
-  stockOnArrival: z.number().int(),
   stockVersion: bigintNumber.describe(
     "Goes up with every stock change of any product. Of two values for the same product, the higher stockVersion is newer",
   ),

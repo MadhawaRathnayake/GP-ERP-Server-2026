@@ -3,13 +3,10 @@ import { z } from "zod"
 import { parseStockChange } from "./stock.events.js"
 import { stockLevel } from "./stock.schema.js"
 
-// The payload notify_stock_change() builds with json_build_object (migration 20261105090000_product_stock_version).
+// The payload notify_stock_change() builds with json_build_object (migration 20261112100000_single_stock).
 const payload = {
   id: "PROD000001",
   stockInHand: 4,
-  stockPreOrder: 0,
-  stockInTransit: 10,
-  stockOnArrival: 2,
   stockVersion: 1042,
 }
 
