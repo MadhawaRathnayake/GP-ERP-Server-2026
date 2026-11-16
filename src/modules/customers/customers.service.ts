@@ -26,6 +26,14 @@ export function listCustomers({ q, city, district, includeDeleted, ...page }: Li
   )
 }
 
+/**
+ * Just these customers, e.g. the ones a live `customer` event named. Deleted ones too (`isDeleted`), so a client
+ * keeping the list can take them out.
+ */
+export function listCustomersByIds(ids: string[]) {
+  return db.customer.findMany({ where: { id: { in: ids } }, orderBy: { id: "asc" } })
+}
+
 export async function getCustomer(id: string) {
   const customer = await db.customer.findUnique({ where: { id } })
   if (!customer) throw new NotFoundError("Customer", id)

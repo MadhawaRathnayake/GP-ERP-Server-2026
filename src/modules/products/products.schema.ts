@@ -39,6 +39,17 @@ export const product = z.object({
 
 export const productPage = pageResult(product)
 
+export const productIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^PROD\d{6,}(,PROD\d{6,})*$/, "Comma-separated product ids")
+    .transform((text) => [...new Set(text.split(","))])
+    .pipe(z.array(z.string()).max(100))
+    .describe("Comma-separated product ids, at most 100"),
+})
+
+export const productList = z.array(product)
+
 export const listProductsQuery = pageQuery.extend({
   sku: z.string().trim().min(1).optional().describe("Case-insensitive partial match on SKU"),
   categoryId: categoryId.optional(),

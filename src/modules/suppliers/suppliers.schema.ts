@@ -30,6 +30,17 @@ export const supplier = z.object({
 
 export const supplierPage = pageResult(supplier)
 
+export const supplierIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^SUP\d{5,}(,SUP\d{5,})*$/, "Comma-separated supplier ids")
+    .transform((text) => [...new Set(text.split(","))])
+    .pipe(z.array(z.string()).max(100))
+    .describe("Comma-separated supplier ids, at most 100"),
+})
+
+export const supplierList = z.array(supplier)
+
 export const listSuppliersQuery = pageQuery.extend({
   q: z.string().trim().min(1).optional().describe("Case-insensitive partial match on code, name or email"),
   includeDeleted: z.stringbool().default(false).describe("Include deleted suppliers"),

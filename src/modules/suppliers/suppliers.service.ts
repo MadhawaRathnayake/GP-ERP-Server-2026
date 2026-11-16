@@ -22,6 +22,14 @@ export function listSuppliers({ q, includeDeleted, ...page }: ListSuppliersQuery
   )
 }
 
+/**
+ * Just these suppliers, e.g. the ones a live `supplier` event named. Deleted ones too (`isDeleted`), so a client
+ * keeping the list can take them out.
+ */
+export function listSuppliersByIds(ids: string[]) {
+  return db.supplier.findMany({ where: { id: { in: ids } }, orderBy: { id: "asc" } })
+}
+
 export async function getSupplier(id: string) {
     const supplier = await db.supplier.findUnique({ where: {id}})
     if (!supplier) throw new NotFoundError("Customer", id)

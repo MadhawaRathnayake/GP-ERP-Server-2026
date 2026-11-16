@@ -83,6 +83,7 @@ describe("app wiring", () => {
   // Every route that requires a permission, and which one. A route losing its `permission` config fails this test.
   it.each([
     ["GET", "/api/v1/products", "PRODUCTS.VIEW"],
+    ["GET", "/api/v1/products/by-ids?ids=PROD000001", "PRODUCTS.VIEW"],
     ["GET", `/api/v1/products/${aProductId}`, "PRODUCTS.VIEW"],
     ["POST", "/api/v1/products", "PRODUCTS.CREATE"],
     ["POST", "/api/v1/products/image-upload-url", "PRODUCTS.EDIT"],
@@ -108,11 +109,13 @@ describe("app wiring", () => {
     ["PATCH", `/api/v1/categories/${aCategoryId}`, "CATEGORY.EDIT"],
     ["DELETE", `/api/v1/categories/${aCategoryId}`, "CATEGORY.DELETE"],
     ["GET", "/api/v1/customers", "CUSTOMERS.VIEW"],
+    ["GET", "/api/v1/customers/by-ids?ids=CUST000001", "CUSTOMERS.VIEW"],
     ["GET", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.VIEW"],
     ["POST", "/api/v1/customers", "CUSTOMERS.CREATE"],
     ["PATCH", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.EDIT"],
     ["DELETE", `/api/v1/customers/${aCustomerId}`, "CUSTOMERS.DELETE"],
     ["GET", "/api/v1/suppliers", "SUPPLIERS.VIEW"],
+    ["GET", "/api/v1/suppliers/by-ids?ids=SUP00001", "SUPPLIERS.VIEW"],
     ["GET", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.VIEW"],
     ["POST", "/api/v1/suppliers", "SUPPLIERS.CREATE"],
     ["PATCH", `/api/v1/suppliers/${aSupplierId}`, "SUPPLIERS.EDIT"],

@@ -140,7 +140,7 @@ export const listQuotationsQuery = pageQuery.extend({
 export const quotationIdsQuery = z.object({
   ids: z
     .string()
-    .regex(/^[1-9]d*(,[1-9]d*)*$/, "Comma-separated quotation ids")
+    .regex(/^[1-9]\d*(,[1-9]\d*)*$/, "Comma-separated quotation ids")
     .transform((text) => [...new Set(text.split(",").map(Number))])
     .pipe(z.array(z.number().int().max(2147483647)).max(100))
     .describe("Comma-separated quotation ids, at most 100"),

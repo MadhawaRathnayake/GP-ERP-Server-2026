@@ -42,6 +42,17 @@ export const customer = z.object({
 
 export const customerPage = pageResult(customer)
 
+export const customerIdsQuery = z.object({
+  ids: z
+    .string()
+    .regex(/^CUST\d{6,}(,CUST\d{6,})*$/, "Comma-separated customer ids")
+    .transform((text) => [...new Set(text.split(","))])
+    .pipe(z.array(z.string()).max(100))
+    .describe("Comma-separated customer ids, at most 100"),
+})
+
+export const customerList = z.array(customer)
+
 export const listCustomersQuery = pageQuery.extend({
   q: z.string().trim().min(1).optional().describe("Case-insensitive partial match on code, name or email"),
   city: z.string().trim().min(1).optional().describe("Exact match on city"),

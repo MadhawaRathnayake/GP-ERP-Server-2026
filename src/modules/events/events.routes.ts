@@ -9,6 +9,9 @@ import { watchDeliveryNoteChanges } from "#modules/delivery-notes/delivery-notes
 import { watchInternalRequisitionChanges } from "#modules/internal-requisitions/internal-requisitions.events.js"
 import { watchPurchaseOrderChanges } from "#modules/purchase-orders/purchase-orders.events.js"
 import { watchGoodsReceivedNoteChanges } from "#modules/goods-received-notes/goods-received-notes.events.js"
+import { watchCustomerChanges } from "#modules/customers/customers.events.js"
+import { watchSupplierChanges } from "#modules/suppliers/suppliers.events.js"
+import { watchProductChanges } from "#modules/products/products.events.js"
 import { watchQuotationChanges } from "#modules/quotations/quotations.events.js"
 import { watchStockChanges } from "#modules/stock/stock.events.js"
 import { stockLevel } from "#modules/stock/stock.schema.js"
@@ -34,12 +37,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   const stopInternalRequisitions = await watchInternalRequisitionChanges((id) => send("internalRequisition", { id }, "INTERNAL_REQUISITIONS.VIEW"))
   const stopPurchaseOrders = await watchPurchaseOrderChanges((id) => send("purchaseOrder", { id }, "PURCHASE_ORDERS.VIEW"))
   const stopGoodsReceivedNotes = await watchGoodsReceivedNoteChanges((id) => send("goodsReceivedNote", { id }, "GOODS_RECEIVED_NOTES.VIEW"))
+  const stopCustomers = await watchCustomerChanges((id) => send("customer", { id }, "CUSTOMERS.VIEW"))
+  const stopSuppliers = await watchSupplierChanges((id) => send("supplier", { id }, "SUPPLIERS.VIEW"))
+  const stopProducts = await watchProductChanges((id) => send("product", { id }, "PRODUCTS.VIEW"))
   // Before the server waits for open requests to finish, which a stream never does on its own.
   app.addHook("preClose", async () => streams.closeAll())
   app.addHook("onClose", async () => {
     stopStock()
     stopInvoices()
     stopQuotations()
+    stopProducts()
+    stopSuppliers()
+    stopCustomers()
     stopGoodsReceivedNotes()
     stopPurchaseOrders()
     stopInternalRequisitions()
@@ -59,6 +68,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
           "- `internalRequisition` (INTERNAL_REQUISITIONS.VIEW): `{ id }` of a internal requisition that was created or changed; reload it with `GET /api/v1/internal-requisitions/by-ids`.",
           "- `purchaseOrder` (PURCHASE_ORDERS.VIEW): `{ id }` of a purchase order that was created or changed; reload it with `GET /api/v1/purchase-orders/by-ids`.",
           "- `goodsReceivedNote` (GOODS_RECEIVED_NOTES.VIEW): `{ id }` of a GRN that was created or changed; reload it with `GET /api/v1/goods-received-notes/by-ids`.",
+          "- `customer` (CUSTOMERS.VIEW): `{ id }` of a customer that was created, changed or deleted; reload it with `GET /api/v1/customers/by-ids`.",
+          "- `supplier` (SUPPLIERS.VIEW): `{ id }` of a supplier that was created, changed or deleted; reload it with `GET /api/v1/suppliers/by-ids`.",
+          "- `product` (PRODUCTS.VIEW): `{ id }` of a product that was created, changed or deleted (not stock alone: see `stock`); reload it with `GET /api/v1/products/by-ids`.",
           "- `resync`: changes may have been missed; reload what you keep live (`GET /api/v1/stock`, the newest invoices and quotations).",
         ].join("\n"),
       },

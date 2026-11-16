@@ -89,5 +89,6 @@
 | `20261116090000_invoice_change_events` | Live invoices: `notify_invoice_change()` and trigger `Invoice_notify_invoice_change` (after every insert or update, the invoice's id on channel `invoice_change`; [automatic.md](automatic.md#live-updates)) |
 | `20261116100000_quotation_change_events` | Live quotations: `notify_quotation_change()` and trigger `Quotation_notify_quotation_change` (after every insert or update, the quotation's id on channel `quotation_change`) |
 | `20261116110000_document_change_events` | Live delivery notes, internal requisitions, purchase orders and GRNs: `notify_document_change()` (sends the row's id on the channel given as the trigger's argument) with a trigger on each table, and `notify_goods_received_note_delivery_change()` on `GoodsReceivedNoteDelivery` (announces its GRN) |
+| `20261116120000_master_data_change_events` | Live master data: triggers on `Customer`, `Supplier` and `Product` calling `notify_document_change()` (channels `customer_change`, `supplier_change`, `product_change`); `Product_notify_product_change` skips updates that change only the stock and audit columns |
 
 Add a row for every new migration.

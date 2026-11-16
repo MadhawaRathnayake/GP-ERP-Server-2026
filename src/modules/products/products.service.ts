@@ -31,6 +31,14 @@ export function listProducts({ sku, categoryId, includeDeleted, ...page }: ListP
   )
 }
 
+/**
+ * Just these products, e.g. the ones a live `product` event named. Deleted ones too (`isDeleted`), so a client
+ * keeping the list can take them out.
+ */
+export function listProductsByIds(ids: string[]) {
+  return db.product.findMany({ where: { id: { in: ids } }, orderBy: { id: "asc" } })
+}
+
 export async function getProduct(id: string) {
   const product = await db.product.findUnique({ where: { id } })
   if (!product) throw new NotFoundError("Product", id)

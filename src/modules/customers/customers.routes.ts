@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { actorOf } from "#security/auth.plugin.js"
-import { createCustomerBody, customer, customerIdParams, customerPage, listCustomersQuery, updateCustomerBody } from "./customers.schema.js"
-import { createCustomer, deleteCustomer, getCustomer, listCustomers, updateCustomer } from "./customers.service.js"
+import { createCustomerBody, customer, customerIdParams, customerIdsQuery, customerList, customerPage, listCustomersQuery, updateCustomerBody } from "./customers.schema.js"
+import { createCustomer, deleteCustomer, getCustomer, listCustomers, listCustomersByIds, updateCustomer } from "./customers.service.js"
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -11,6 +11,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "CUSTOMERS.VIEW", cache: ["Customer"] },
     },
     (req) => listCustomers(req.query),
+  )
+
+  // The rows a live `customer` event names (GET /api/v1/events), deleted ones included, so a client keeping the whole
+  // list reloads only those. Not cached: the event can arrive before the Customer cache is cleared, and a cached copy
+  // would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: customerIdsQuery, response: { 200: customerList } },
+      config: { permission: "CUSTOMERS.VIEW" },
+    },
+    (req) => listCustomersByIds(req.query.ids),
   )
 
   app.get(

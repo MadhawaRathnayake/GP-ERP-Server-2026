@@ -9,12 +9,12 @@ import {
   imageUploadBody,
   listProductsQuery,
   product,
-  productIdParams,
+  productIdParams, productIdsQuery, productList,
   productPage,
   stockAdjustmentBody,
   updateProductBody,
 } from "./products.schema.js"
-import { adjustStock, createProduct, deleteProduct, getProduct, listProducts, updateProduct } from "./products.service.js"
+import { adjustStock, createProduct, deleteProduct, getProduct, listProducts, listProductsByIds, updateProduct } from "./products.service.js"
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -24,6 +24,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       config: { permission: "PRODUCTS.VIEW", cache: ["Product"] },
     },
     (req) => listProducts(req.query),
+  )
+
+  // The rows a live `product` event names (GET /api/v1/events), deleted ones included, so a client keeping the whole
+  // list reloads only those. Not cached: the event can arrive before the Product cache is cleared, and a cached copy
+  // would bring the old row back.
+  app.get(
+    "/by-ids",
+    {
+      schema: { querystring: productIdsQuery, response: { 200: productList } },
+      config: { permission: "PRODUCTS.VIEW" },
+    },
+    (req) => listProductsByIds(req.query.ids),
   )
 
   app.get(
