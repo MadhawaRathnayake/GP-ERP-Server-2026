@@ -37,7 +37,7 @@ beforeAll(async () => {
     })
   productId = (await product(`TEST-${stamp}`)).id
   otherProductId = (await product(`TEST-${stamp}-2`)).id
-  supplierId = (await db.supplier.create({ data: { code: `TEST-${stamp}`, name: `Test Supplier ${stamp}`, country: "Sri Lanka" } })).id
+  supplierId = (await db.supplier.create({ data: { code: `TEST-${stamp}`, name: `Test Supplier ${stamp}`, country: "LKA" } })).id
 })
 
 afterAll(async () => {

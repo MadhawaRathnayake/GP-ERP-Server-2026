@@ -3,8 +3,9 @@
 Status: **internal requisitions built (server and client)**: `src/modules/internal-requisitions/`, with approval
 (`modules/approvals`) instead of the old `poCreated`/`poApproved`/`grnCreated` IR statuses (see the comment on
 `InternalRequisitionStatus`). **Purchase orders built (server and client, §7)**: `src/modules/purchase-orders/`,
-migration `20261110090000_purchase_orders` (to apply), the IR and PO PDFs ported. **GRNs built (server and client, §8)**: `src/modules/goods-received-notes/`,
-migration `20261111090000_goods_received_notes` (to apply), with the recommended answers to §8.6.
+migration `20261110090000_purchase_orders` (to apply), the IR and PO PDFs ported. **GRNs built (server and client)**: `src/modules/goods-received-notes/`,
+one GRN per order received in batches (deliveries), no approval, serial numbers as the last step
+([serial-numbers.md](serial-numbers.md) §3.10).
 
 ## 0. Read first
 
@@ -79,11 +80,8 @@ Client (Gatsby + Redux): `C:\Users\madha\Documents\Development-22-10-2026\GP-Sys
 
 ## 5. Decide with the owner before building (ask; don't guess)
 
-1. **Stock buckets.** `Product` has `stockInHand`, `stockPreOrder`, `stockInTransit` and `stockOnArrival`. Invoices
-   use `inTransit` for goods sold and on their way to the customer (finalize: `inHand → inTransit`). The comment above
-   `StockMovement` in `schema.prisma`, though, describes `inTransit` as goods shipped by a supplier. Agree which
-   buckets supply moves (e.g. PO approved → `+onArrival`, GRN received → `onArrival → inHand`), then correct that
-   comment.
+1. **Stock** (decided). One stock figure, `Product.stockInHand`. A GRN delivery adds its quantity-tracked goods to it;
+   serial-tracked goods are added one unit at a time as their serials are entered. A PO or IR moves no stock.
 2. Which "etc." screens to include (§2 "Related").
 3. Does a GRN update `Product.cost` (a `CostMovement`)? Which currency do imports use?
 4. Port the IR / PO / GRN PDFs now (invoices.md §7 method) or later?
@@ -136,9 +134,13 @@ The IR and PO PDFs are exact ports of the old ones.
 - PDFs proven against the old files with the invoices.md §7 method (one- and two-page IRs and POs): identical, except
   page 2+ of a multi-page PO, whose rows are 1pt higher (react-pdf v4 doesn't redraw a split view's top border). The
   adaptations for react-pdf v4 are listed in each document's header comment.
-- Stock: a PO moves none. Whether approval adds `+onArrival` is still §5.1, to decide with GRNs.
+- Stock: a PO moves none (§5.1).
 
 ## 8. Goods received notes (plan, 2026-11-11)
+
+**Replaced 2026-11-12** by [serial-numbers.md](serial-numbers.md) §3.10: one GRN per order received in batches
+(deliveries), no approval, serial numbers as the last step. What follows is the first design, kept for its analysis of
+the old system.
 
 Status: **built 2026-11-11** (uncommitted), with the recommended answer to every §8.6 question: one GRN per delivery;
 approval adds `+inHand` only (`onArrival` stays unused); no more than outstanding; no "close order", no undo of an

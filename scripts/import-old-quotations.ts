@@ -12,7 +12,7 @@
 // Hemantha"); the creator becomes the sales manager (the old salesManager was always empty).
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { Prisma, type DiscountType, type QuotationStatus, type QuotationType } from "#generated/prisma/client.js"
+import { Prisma, type DiscountType, type QuotationStatus, type SalesDocumentType } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
 import {
   lineAmounts,
@@ -191,7 +191,7 @@ for (const q of oldQuotations) {
   const confirmedById = confirmer ? (userIds.get(confirmer.$oid) ?? null) : null
   if (confirmer && !confirmedById) countUnmapped(confirmer)
 
-  const type: QuotationType = q.quoteType === "Warranty" ? "warranty" : q.quoteType === "Service" ? "service" : "sales"
+  const type: SalesDocumentType = q.quoteType === "Warranty" ? "warranty" : q.quoteType === "Service" ? "service" : "sales"
   if (type === "service") {
     if (text(q.modelType)) notes.push(`Model: ${q.modelType!.trim()}`)
     if (q.quotationProducts.length) {
@@ -260,8 +260,9 @@ for (const q of oldQuotations) {
       type,
       repairReceiveNoteId: type === "service" && q.rrnRef ? (repairNoteNumbers.get(q.rrnRef.$oid) ?? q.rrnRef.$oid) : null,
       troubleshootId: type === "warranty" && q.troubleshootingRef ? (troubleshootNumbers.get(q.troubleshootingRef.$oid) ?? q.troubleshootingRef.$oid) : null,
-      oldInvoiceId: type !== "sales" ? text(q.oldInvoiceNum) : null,
-      oldSerialNumberId: type !== "sales" ? text(q.oldSN) : null,
+      // Old-system numbers as text, with no link (oldInvoiceId, oldSerialItemId) until the old invoices and serials are imported.
+      oldInvoiceNumber: type !== "sales" ? text(q.oldInvoiceNum) : null,
+      oldSerialNumber: type !== "sales" ? text(q.oldSN) : null,
       productModel: type === "warranty" ? text(q.modelType) : null,
       paymentTerms: q.paymentTerms?.trim() === "On Delivery" ? "cashOnDelivery" : null,
       deliveryLocation: text(q.deliverTo),

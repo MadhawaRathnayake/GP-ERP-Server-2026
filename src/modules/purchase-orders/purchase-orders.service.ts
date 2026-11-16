@@ -5,9 +5,9 @@ import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { PermissionKey } from "#security/permissions.js"
 import { isApprovalRequired, listApprovals, recordApproval } from "#modules/approvals/approvals.service.js"
-import { cancelGoodsReceivedNotesOfRequisition } from "#modules/goods-received-notes/goods-received-notes.service.js"
+import { assertNoGoodsReceived } from "#modules/goods-received-notes/goods-received-notes.service.js"
 import { lineAmounts, quotationTotals, roundMoney } from "#modules/quotations/quotations.amounts.js"
-import { getSettings } from "#modules/settings/settings.service.js"
+import { getSettings, today } from "#modules/settings/settings.service.js"
 import {
   PurchaseOrderNotCancellableError,
   PurchaseOrderNotEditableError,
@@ -28,9 +28,9 @@ import type {
 // server works out every amount (quotations.amounts.ts) with the VAT rate from the settings.
 // Saving starts the PO as pending, or as approved when Admin → Approvals says purchase orders don't need approval. A
 // pending PO is approved or rejected; a pending or rejected one can be edited, and editing a rejected one submits it
-// again. Cancelling needs a reason and cancels the IR too, as in the old system (and cancelling the IR cancels its PO),
-// and its open GRN; it's refused once goods have been received on a GRN. Both lock the IR row first, then the PO's.
-// An approved PO becomes completed when its GRNs have received every line in full (modules/goods-received-notes).
+// again. Cancelling needs a reason and cancels the IR too, as in the old system (and cancelling the IR cancels its PO);
+// it's refused once goods have been received (the order has a GRN). Both lock the IR row first, then the PO's.
+// An approved PO becomes completed when its GRN has received every line in full (modules/goods-received-notes).
 
 const SCREEN = "PURCHASE_ORDERS"
 
@@ -202,8 +202,8 @@ export function rejectPurchaseOrder(id: number, reason: string, actor: Actor) {
 }
 
 /**
- * Cancels the PO (an approved one → cancelledAfterApproved, any other → cancelled), its IR and its open GRN. Not once
- * goods have been received on a GRN.
+ * Cancels the PO (an approved one → cancelledAfterApproved, any other → cancelled) and its IR. Not once goods have been
+ * received (the order has a GRN).
  */
 export async function cancelPurchaseOrder(id: number, reason: string, actor: Actor) {
   await db.$transaction(async (tx) => {
@@ -215,7 +215,7 @@ export async function cancelPurchaseOrder(id: number, reason: string, actor: Act
     const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, select: { id: true, status: true } })
     if (cancelledStatuses.includes(order.status)) throw new PurchaseOrderNotCancellableError(id, order.status)
     const cancel = await cancelRow(tx, order, reason, actor)
-    await cancelGoodsReceivedNotesOfRequisition(tx, found.internalRequisitionId, reason, actor)
+    await assertNoGoodsReceived(tx, found.internalRequisitionId)
 
     // As in the old system, the IR goes with it (it's approved: a PO is made only from an approved IR).
     await tx.internalRequisition.updateMany({
@@ -305,10 +305,4 @@ function buildLines(items: PurchaseOrderItemInput[], requisitionProductIds: Set<
 async function assertActiveSupplier(id: string) {
   const supplier = await db.supplier.findUnique({ where: { id }, select: { isDeleted: true } })
   if (!supplier || supplier.isDeleted) throw new BadRequestError(`Supplier ${id} doesn't exist or is deleted`)
-}
-
-/** Today's date in the company timezone, as a @db.Date value. */
-function today(timezone: string) {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
-  return new Date(`${day}T00:00:00.000Z`)
 }

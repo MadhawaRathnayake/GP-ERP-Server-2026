@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { db } from "#core/db.js"
+import { COUNTRIES } from "#modules/countries/countries.js"
 
 const args = process.argv.slice(2)
 const dir = args.find((a) => !a.startsWith("--"))
@@ -229,12 +230,9 @@ const products = [...groups.values()].map((docs) => {
   const warranty = cfWarranty ?? invoiceWarranty ?? 0
 
   const rawStock = num(p.stock) ?? 0
-  const rawTransit = num(p.stockInTransit) ?? 0
   const stockInHand = Math.max(0, Math.floor(rawStock))
-  const stockInTransit = Math.max(0, Math.floor(rawTransit))
-  if (!Number.isInteger(rawStock) || !Number.isInteger(rawTransit)) issues.push(`fractional stock ${rawStock} / in transit ${rawTransit}, rounded down`)
+  if (!Number.isInteger(rawStock)) issues.push(`fractional stock ${rawStock}, rounded down`)
   if (rawStock < 0) issues.push(`stock in hand was ${rawStock}, set to 0`)
-  if (rawTransit < 0) issues.push(`in transit was ${rawTransit}, set to 0`)
   if (p.price == null) issues.push("no price, set to 0")
   const droppedWithStock = docs.slice(1).filter((d) => num(d.stock) || num(d.stockInTransit))
   if (droppedWithStock.length) issues.push(`dropped ${droppedWithStock.length} duplicate(s) that also had stock: ${droppedWithStock.map((d) => num(d.stock)).join(", ")}`)
@@ -247,7 +245,7 @@ const products = [...groups.values()].map((docs) => {
     row: {
       sku: p.sku!.trim(),
       title,
-      description: (text(f?.productDescription?.["en-US"]) ?? "N/A").slice(0, 5000),
+      description: text(f?.productDescription?.["en-US"])?.slice(0, 5000) ?? null,
       category,
       manufacturer: known(f?.manufacturer?.["en-US"])?.slice(0, 200) ?? null,
       countryOfOrigin: known(f?.countryOfOrigin?.["en-US"])?.slice(0, 100) ?? null,
@@ -258,7 +256,6 @@ const products = [...groups.values()].map((docs) => {
       cost: money(num(p.cost)),
       minimumStock: Math.max(0, Math.floor(f?.minStock?.["en-US"] ?? 0)),
       stockInHand,
-      stockInTransit,
       additionalInfo,
       trackingType: hasSerials ? ("serial" as const) : ("quantity" as const),
       createdAt: oidTime(p._id),
@@ -310,6 +307,8 @@ const customers = lines<OldCustomer>("customers.json")
     if (!c.customerClassification) issues.push(`type guessed: ${type}`)
 
     const structured = text(c.houseNumber) || text(c.street) || text(c.city)
+    const country = countryOf(text(c.country) ?? "Sri Lanka")
+    if (!country) issues.push(`country ${c.country} not known, Sri Lanka used`)
     const row = {
       id: id("CUST", i + 1, 6),
       code: c.code.trim(),
@@ -323,7 +322,7 @@ const customers = lines<OldCustomer>("customers.json")
       city: text(c.city),
       district: text(c.district),
       province: text(c.province),
-      country: text(c.country) ?? "Sri Lanka",
+      country: country ?? "LKA",
       contactPerson: text(c.contactPerson),
       contactPhones: contactPhones.kept,
       vatNumber,
@@ -339,6 +338,11 @@ const customers = lines<OldCustomer>("customers.json")
     return row
   })
 
+// The old system has country names; the database stores the ISO alpha-3 code (modules/countries). undefined = unknown.
+function countryOf(name: string) {
+  return COUNTRIES.find((country) => country.name.toLowerCase() === name.toLowerCase())?.code
+}
+
 // ─── Suppliers ──────────────────────────────────────────────────────────────
 
 const supplierReport: Record<string, unknown>[] = []
@@ -347,7 +351,7 @@ const suppliers = lines<OldSupplier>("suppliers.json")
   .map((s, i) => {
     const phones = phoneList(s.telephone)
     const address = s.address.trim()
-    const country = /china|xiamn/i.test(address) ? "China" : /emirates/i.test(address) ? "United Arab Emirates" : /hong ?kong/i.test(address) ? "Hong Kong" : "Sri Lanka"
+    const country = /china|xiamn/i.test(address) ? "CHN" : /emirates/i.test(address) ? "ARE" : /hong ?kong/i.test(address) ? "HKG" : "LKA"
     const row = {
       id: id("SUP", i + 1, 5),
       code: s.code.trim(),
@@ -419,10 +423,7 @@ if (mode !== "report") {
         await tx.priceMovement.createMany({ data: productRows.map((p) => ({ productId: p.id, previousPrice: null, price: p.price, remarks: REMARKS })) })
         await tx.costMovement.createMany({ data: productRows.map((p) => ({ productId: p.id, previousCost: null, cost: p.cost, remarks: REMARKS })) })
         await tx.stockMovement.createMany({
-          data: productRows.flatMap((p) => [
-            ...(p.stockInHand ? [{ productId: p.id, bucket: "inHand" as const, quantity: p.stockInHand, balanceAfter: p.stockInHand, remarks: REMARKS }] : []),
-            ...(p.stockInTransit ? [{ productId: p.id, bucket: "inTransit" as const, quantity: p.stockInTransit, balanceAfter: p.stockInTransit, remarks: REMARKS }] : []),
-          ]),
+          data: productRows.flatMap((p) => (p.stockInHand ? [{ productId: p.id, quantity: p.stockInHand, balanceAfter: p.stockInHand, remarks: REMARKS }] : [])),
         })
         await tx.customer.createMany({ data: customers })
         await tx.supplier.createMany({ data: suppliers })

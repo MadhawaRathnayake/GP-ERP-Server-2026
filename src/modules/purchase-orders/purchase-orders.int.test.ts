@@ -43,7 +43,7 @@ beforeAll(async () => {
   productId = (await product(`TEST-${stamp}`)).id
   otherProductId = (await product(`TEST-${stamp}-2`)).id
   strangerProductId = (await product(`TEST-${stamp}-3`)).id
-  const supplier = (code: string) => db.supplier.create({ data: { code, name: `Test Supplier ${code}`, country: "Sri Lanka" } })
+  const supplier = (code: string) => db.supplier.create({ data: { code, name: `Test Supplier ${code}`, country: "LKA" } })
   supplierId = (await supplier(`TEST-${stamp}`)).id
   otherSupplierId = (await supplier(`TEST-${stamp}-2`)).id
 })
