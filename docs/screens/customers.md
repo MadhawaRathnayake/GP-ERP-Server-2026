@@ -95,7 +95,7 @@ model Customer {
   city           String?
   district       String?
   province       String?
-  country        String
+  country        String   @db.Char(3) // ISO 3166-1 alpha-3, e.g. LKA (modules/countries)
   vatNumber      String?
   tinNumber      String?
   pvNumber       String?
@@ -215,7 +215,7 @@ export const customer = z.object({
   city: z.string().nullable(),
   district: z.string().nullable(),
   province: z.string().nullable(),
-  country: z.string(),
+  country: z.string().describe("ISO 3166-1 alpha-3, e.g. LKA"),
   vatNumber: z.string().nullable(),
   tinNumber: z.string().nullable(),
   pvNumber: z.string().nullable(),
@@ -250,7 +250,7 @@ const customerFields = z.object({
   city: z.string().trim().min(1).max(100).nullable(),
   district: z.string().trim().min(1).max(100).nullable(),
   province: z.string().trim().min(1).max(100).nullable(),
-  country: z.string().trim().min(1).max(100),
+  country: countryCode, // modules/countries: an alpha-3 code in any case ("lka" → "LKA")
   vatNumber: z.string().trim().regex(/^\d{9}-\d{4}$/, "Must be a VAT number like 109860522-7000").nullable(),
   tinNumber: z.string().trim().regex(/^\d{9}$/, "Must be a TIN number like 109860522").nullable(),
   pvNumber: z.string().trim().regex(/^PV-\d+$/, "Must be a PV number like PV-00300617").nullable(),
@@ -287,7 +287,8 @@ Validation rules (a request that breaks one gets 400 `VALIDATION_ERROR`):
 | Field | Rule | Example |
 |---|---|---|
 | `:id` | `CUST` + at least 6 digits | `CUST000001` |
-| `code`, `name`, `country` | required | |
+| `code`, `name` | required | |
+| `country` | required, an ISO 3166-1 alpha-3 code (`GET /api/v1/countries` lists them) | `LKA` |
 | `city`, `district`, `province` | optional (`null` when left out) | |
 | `email` | trimmed, lower-cased, a valid address | `buyer@acme.lk` |
 | `phones` | up to 10; each `+` (optional) and 7–15 digits, no spaces | `+94771234567` |
@@ -463,7 +464,7 @@ Runs with `npm test`, no database:
 import { describe, expect, it } from "vitest"
 import { createCustomerBody, customerIdParams, updateCustomerBody } from "./customers.schema.js"
 
-const required = { code: "C-1", type: "B2B", name: "Acme", city: "Colombo", district: "Colombo", province: "Western", country: "Sri Lanka" }
+const required = { code: "C-1", type: "B2B", name: "Acme", city: "Colombo", district: "Colombo", province: "Western", country: "LKA" }
 
 describe("customer bodies", () => {
   it("fills defaults on create", () => {
@@ -471,7 +472,7 @@ describe("customer bodies", () => {
   })
 
   it("doesn't need an address", () => {
-    const body = createCustomerBody.parse({ code: "C-2", type: "B2C", name: "Walk-in", country: "Sri Lanka" })
+    const body = createCustomerBody.parse({ code: "C-2", type: "B2C", name: "Walk-in", country: "LKA" })
     expect(body).toMatchObject({ city: null, district: null, province: null })
   })
 
@@ -550,7 +551,7 @@ let viewer: TestUser // can only view them
 const code = `TEST-${Date.now()}`
 // A district no real customer has, so the filters only find this test's customer.
 const district = `TEST-District-${Date.now()}`
-const body = { code, type: "B2B", name: "Test Customer Ltd", city: "Colombo", district, province: "Western", country: "Sri Lanka" }
+const body = { code, type: "B2B", name: "Test Customer Ltd", city: "Colombo", district, province: "Western", country: "LKA" }
 
 beforeAll(async () => {
   app = await startApp()
@@ -1005,7 +1006,7 @@ const schema = z.object({
   street: optional(200),
   city: optional(100),
   district: z.string().refine((value) => value === NO_DISTRICT || value in DISTRICT_PROVINCES, "Choose a district"),
-  country: required("Country", 100),
+  country: z.string().length(3, "Choose a country"),
   vatNumber: z.string().trim().regex(/^(\d{9}-\d{4})?$/, "Format: 109860522-7000"),
   tinNumber: z.string().trim().regex(/^(\d{9})?$/, "Format: 9 digits, e.g. 109860522"),
   pvNumber: z.string().trim().regex(/^(PV-\d+)?$/, "Format: PV-00300617"),
@@ -1023,7 +1024,7 @@ const textFields = [
   { name: "houseNumber", label: "House number", placeholder: "Optional" },
   { name: "street", label: "Street", placeholder: "Optional" },
   { name: "city", label: "City", placeholder: "Optional, e.g. Dehiwala" },
-  { name: "country", label: "Country", placeholder: "Sri Lanka" },
+  { name: "country", label: "Country", placeholder: "" }, // rendered as a CountrySelect (pages/Countries)
   { name: "vatNumber", label: "VAT number", placeholder: "Optional, e.g. 109860522-7000" },
   { name: "tinNumber", label: "TIN number", placeholder: "Optional, e.g. 109860522" },
   { name: "pvNumber", label: "PV number", placeholder: "Optional, e.g. PV-00300617" },
@@ -1077,7 +1078,7 @@ export function CustomerForm({ title, submitLabel, pending, customer, onSubmit }
       street: customer?.street ?? "",
       city: customer?.city ?? "",
       district: customer?.district ?? NO_DISTRICT,
-      country: customer?.country ?? "Sri Lanka",
+      country: customer?.country ?? settings?.country ?? "",
       vatNumber: customer?.vatNumber ?? "",
       tinNumber: customer?.tinNumber ?? "",
       pvNumber: customer?.pvNumber ?? "",
@@ -1342,7 +1343,7 @@ export function CustomerPage() {
     ["Address", address || "—"],
     ["District", customer.district ?? "—"],
     ["Province", customer.province ?? "—"],
-    ["Country", customer.country],
+    ["Country", <CountryName code={customer.country} />],
     ["VAT number", customer.vatNumber ?? "—"],
     ["TIN number", customer.tinNumber ?? "—"],
     ["PV number", customer.pvNumber ?? "—"],

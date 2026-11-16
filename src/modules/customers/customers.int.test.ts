@@ -11,7 +11,7 @@ const stamp = Date.now()
 const code = `TEST-${stamp}` // test rows' codes start with TEST-, so afterAll can remove them
 const name = `Test Customer ${stamp}`
 const district = `TEST-District-${stamp}` // a district no real customer has, so the filters find only this test's
-const body = { code, type: "B2B", name, city: "Colombo", district, province: "Western", country: "Sri Lanka" }
+const body = { code, type: "B2B", name, city: "Colombo", district, province: "Western", country: "LKA" }
 
 beforeAll(async () => {
   app = await startApp()
@@ -79,7 +79,7 @@ describe("customers", () => {
   })
 
   it("creates a customer without an address", async () => {
-    const payload = { code: `${code}-B2C`, type: "B2C", name: `${name} walk-in`, country: "Sri Lanka" }
+    const payload = { code: `${code}-B2C`, type: "B2C", name: `${name} walk-in`, country: "LKA" }
     const res = await app.inject({ method: "POST", url: "/api/v1/customers", headers: { cookie: user.cookie }, payload })
     expect(res.statusCode).toBe(201)
     expect(res.json()).toMatchObject({ city: null, district: null, province: null })

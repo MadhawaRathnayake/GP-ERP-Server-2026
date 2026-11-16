@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { pageQuery, pageResult } from "#http/pagination.js"
+import { countryCode } from "#modules/countries/countries.schema.js"
 
 const customerId = z.string().regex(/^CUST\d{6,}$/, "Must be a customer id like CUST000001")
 
@@ -64,7 +65,7 @@ const customerFields = z.object({
   city: z.string().trim().min(1).max(100).nullable(),
   district: z.string().trim().min(1).max(100).nullable(),
   province: z.string().trim().min(1).max(100).nullable(),
-  country: z.string().trim().min(1).max(100),
+  country: countryCode,
   contactPerson: z.string().trim().min(1).max(200).nullable(),
   contactPhones: z.array(phone).max(10),
   vatNumber: z.string().trim().regex(/^\d{9}-\d{4}$/, "Must be a VAT number like 109860522-7000").nullable(),

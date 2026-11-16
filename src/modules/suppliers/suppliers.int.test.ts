@@ -9,7 +9,7 @@ let viewer: TestUser // can only view them
 const stamp = Date.now()
 const code = `TEST-${stamp}` // test rows' codes start with TEST-, so afterAll can remove them
 const name = `Test Supplier ${stamp}` // unique, so ?q= finds only this test's supplier
-const body = { code, name, country: "Sri Lanka" }
+const body = { code, name, country: "LKA" }
 
 beforeAll(async () => {
   app = await startApp()
