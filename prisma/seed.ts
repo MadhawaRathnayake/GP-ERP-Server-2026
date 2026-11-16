@@ -19,16 +19,17 @@ if (!adminEmail || !adminPassword) {
 
 // The role's grants point at Permission rows, which the server also syncs at boot.
 await syncPermissions()
-const role = await db.role.upsert({
-  where: { name: SUPER_ADMIN_ROLE },
-  update: {},
-  create: {
-    name: SUPER_ADMIN_ROLE,
-    description: "Full access to every module and setting.",
-    isSystem: true, // has every permission in code, including ones added later
-    permissions: { create: await toGrantRows(PERMISSION_DEFINITIONS.map((p) => p.key)) },
-  },
-})
+// There is one system role (index "Role_one_system_key").
+const role =
+  (await db.role.findFirst({ where: { isSystem: true } })) ??
+  (await db.role.create({
+    data: {
+      name: SUPER_ADMIN_ROLE,
+      description: "Full access to every module and setting.",
+      isSystem: true, // has every permission in code, including ones added later
+      permissions: { create: await toGrantRows(PERMISSION_DEFINITIONS.map((p) => p.key)) },
+    },
+  }))
 
 // The first user has nobody to be created by, so they are their own creator.
 if (!(await db.user.findUnique({ where: { email: adminEmail } }))) {

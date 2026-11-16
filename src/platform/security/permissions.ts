@@ -38,6 +38,17 @@ export const PERMISSIONS = {
     CREATE: "Create products",
     EDIT: "Edit products",
     DELETE: "Delete products",
+    ADJUST_STOCK: "Add or remove stock by hand, with a reason (serial-tracked products: by serial number)",
+  },
+  SERIAL_ITEMS: {
+    VIEW: "View serial numbers: find a unit, its invoice, customer, warranty and history",
+    EDIT: "Correct a unit's serial, pallet or accessory serials",
+  },
+  ACCESSORIES: {
+    VIEW: "View the accessory list (what can come in a product's box with its own serial)",
+    CREATE: "Create accessories",
+    EDIT: "Edit accessories",
+    DELETE: "Delete accessories",
   },
   CATEGORY: {
     VIEW: "View category",
@@ -74,6 +85,7 @@ export const PERMISSIONS = {
     CREATE: "Create an invoice from a confirmed quotation",
     CREATE_DIRECT: "Create an invoice without a quotation",
     EDIT: "Edit draft invoices: prices, discounts, lines, payment and notes",
+    ADD_SERIALS: "Scan the serial numbers of the units on draft invoices (the warehouse)",
     FINALIZE: "Finalize draft invoices (gives the invoice number and moves the stock)",
     CANCEL: "Cancel invoices (gives back the stock and the quotation)",
   },
@@ -100,11 +112,8 @@ export const PERMISSIONS = {
   },
   GOODS_RECEIVED_NOTES: {
     VIEW: "View goods received notes (GRNs)",
-    CREATE: "Create a GRN from an approved purchase order or an approved international internal requisition",
-    EDIT: "Edit pending and rejected GRNs (editing a rejected one resubmits it)",
-    APPROVE: "Approve pending GRNs (adds the received goods to stock)",
-    REJECT: "Reject pending GRNs, with a reason",
-    CANCEL: "Cancel pending and rejected GRNs, with a reason",
+    CREATE: "Record deliveries of an approved purchase order or international internal requisition (adds the goods to stock)",
+    ADD_SERIALS: "Add the serial numbers of received serial-tracked goods (each unit goes into stock)",
   },
   REPORTS: { VIEW: "Open reports" },
 } as const satisfies Record<string, Record<string, string>>

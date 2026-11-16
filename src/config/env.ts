@@ -33,7 +33,7 @@ const schema = z.object({
   R2_PUBLIC_URL: z.url().transform((url) => url.replace(/\/$/, "")),
 
   DEFAULT_CURRENCY: z.string().length(3).toUpperCase().default("LKR"),
-  DEFAULT_COUNTRY: z.string().length(2).toUpperCase().default("LK"),
+  DEFAULT_COUNTRY: z.string().length(3).toUpperCase().default("LKA"), // ISO 3166-1 alpha-3
   DEFAULT_TIMEZONE: z.string().default("Asia/Colombo"),
   DEFAULT_VAT_RATE: z.coerce.number().min(0).max(100).default(18),
 })

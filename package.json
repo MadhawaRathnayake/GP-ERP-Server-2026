@@ -60,6 +60,10 @@
     "admin:restore": "tsx --conditions=development scripts/restore-admin.ts",
     "import:old-data": "tsx --conditions=development scripts/import-old-data.ts",
     "import:old-quotations": "tsx --conditions=development scripts/import-old-quotations.ts",
+    "import:old-invoices": "tsx --conditions=development scripts/import-old-invoices.ts",
+    "import:old-serials": "tsx --conditions=development scripts/import-old-serials.ts",
+    "import:old-delivery-notes": "tsx --conditions=development scripts/import-old-delivery-notes.ts",
+    "import:old-supply": "tsx --conditions=development scripts/import-old-supply.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

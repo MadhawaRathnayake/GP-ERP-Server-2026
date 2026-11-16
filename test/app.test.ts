@@ -68,12 +68,12 @@ afterAll(() => app.close())
 describe("app wiring", () => {
   it("mounts every module under /api/v1/<folder>", () => {
     const routes = app.printRoutes({ commonPrefix: false })
-    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/goods-received-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/auth/login", "/api/v1/health"]) {
+    for (const path of ["/api/v1/products", "/api/v1/categories", "/api/v1/accessories", "/api/v1/serial-items", "/api/v1/customers", "/api/v1/suppliers", "/api/v1/quotations", "/api/v1/invoices", "/api/v1/delivery-notes", "/api/v1/internal-requisitions", "/api/v1/purchase-orders", "/api/v1/goods-received-notes", "/api/v1/stock", "/api/v1/dropdowns", "/api/v1/approvals", "/api/v1/users", "/api/v1/roles", "/api/v1/permissions", "/api/v1/settings", "/api/v1/countries", "/api/v1/auth/login", "/api/v1/health"]) {
       expect(routes).toContain(path)
     }
   })
 
-  it.each(["/api/v1/products", "/api/v1/customers", "/api/v1/users", "/api/v1/settings", "/api/v1/auth/me"])("%s needs a session by default", async (url) => {
+  it.each(["/api/v1/products", "/api/v1/customers", "/api/v1/users", "/api/v1/settings", "/api/v1/countries", "/api/v1/auth/me"])("%s needs a session by default", async (url) => {
     const res = await app.inject({ url })
     expect(res.statusCode).toBe(401)
     expect(res.json().error).toMatchObject({ code: "UNAUTHENTICATED", requestId: expect.any(String) })
@@ -88,6 +88,19 @@ describe("app wiring", () => {
     ["POST", "/api/v1/products/image-upload-url", "PRODUCTS.EDIT"],
     ["PATCH", `/api/v1/products/${aProductId}`, "PRODUCTS.EDIT"],
     ["DELETE", `/api/v1/products/${aProductId}`, "PRODUCTS.DELETE"],
+    ["POST", `/api/v1/products/${aProductId}/stock-adjustments`, "PRODUCTS.ADJUST_STOCK"],
+    ["GET", `/api/v1/products/${aProductId}/accessories`, "PRODUCTS.VIEW"],
+    ["PUT", `/api/v1/products/${aProductId}/accessories`, "PRODUCTS.EDIT"],
+    ["GET", "/api/v1/accessories", "ACCESSORIES.VIEW"],
+    ["GET", "/api/v1/accessories/ACC0001", "ACCESSORIES.VIEW"],
+    ["POST", "/api/v1/accessories", "ACCESSORIES.CREATE"],
+    ["PATCH", "/api/v1/accessories/ACC0001", "ACCESSORIES.EDIT"],
+    ["DELETE", "/api/v1/accessories/ACC0001", "ACCESSORIES.DELETE"],
+    ["GET", "/api/v1/serial-items", "SERIAL_ITEMS.VIEW"],
+    ["GET", "/api/v1/serial-items/stock-check", "SERIAL_ITEMS.VIEW"],
+    ["POST", "/api/v1/serial-items/check", "SERIAL_ITEMS.VIEW"],
+    ["GET", "/api/v1/serial-items/1", "SERIAL_ITEMS.VIEW"],
+    ["PATCH", "/api/v1/serial-items/1", "SERIAL_ITEMS.EDIT"],
     ["GET", "/api/v1/stock", "PRODUCTS.VIEW"],
     ["GET", "/api/v1/stock/events", "PRODUCTS.VIEW"],
     ["GET", "/api/v1/categories", "CATEGORY.VIEW"],
@@ -119,6 +132,8 @@ describe("app wiring", () => {
     ["PATCH", `/api/v1/invoices/${anInvoiceId}`, "INVOICES.EDIT"],
     ["POST", `/api/v1/invoices/${anInvoiceId}/finalize`, "INVOICES.FINALIZE"],
     ["POST", `/api/v1/invoices/${anInvoiceId}/cancel`, "INVOICES.CANCEL"],
+    ["POST", `/api/v1/invoices/${anInvoiceId}/serials/scan`, "INVOICES.ADD_SERIALS"],
+    ["DELETE", `/api/v1/invoices/${anInvoiceId}/serials/1`, "INVOICES.ADD_SERIALS"],
     ["GET", "/api/v1/delivery-notes", "DELIVERY_NOTES.VIEW"],
     ["GET", "/api/v1/delivery-notes/item-verifiers", "DELIVERY_NOTES.SET_VERIFIER"],
     ["GET", "/api/v1/delivery-notes/item-issuers", "DELIVERY_NOTES.SET_ISSUER"],
@@ -143,10 +158,8 @@ describe("app wiring", () => {
     ["GET", `/api/v1/goods-received-notes/orders/${anInternalRequisitionId}`, "GOODS_RECEIVED_NOTES.VIEW"],
     ["GET", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}`, "GOODS_RECEIVED_NOTES.VIEW"],
     ["POST", "/api/v1/goods-received-notes", "GOODS_RECEIVED_NOTES.CREATE"],
-    ["PATCH", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}`, "GOODS_RECEIVED_NOTES.EDIT"],
-    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/approve`, "GOODS_RECEIVED_NOTES.APPROVE"],
-    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/reject`, "GOODS_RECEIVED_NOTES.REJECT"],
-    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/cancel`, "GOODS_RECEIVED_NOTES.CANCEL"],
+    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/deliveries`, "GOODS_RECEIVED_NOTES.CREATE"],
+    ["POST", `/api/v1/goods-received-notes/${aGoodsReceivedNoteId}/serials`, "GOODS_RECEIVED_NOTES.ADD_SERIALS"],
     ["GET", "/api/v1/dropdowns", "DROPDOWNS.VIEW"],
     ["PATCH", "/api/v1/dropdowns/SALES_MANAGER", "DROPDOWNS.EDIT"],
     ["GET", "/api/v1/approvals/rules", "APPROVALS.VIEW"],

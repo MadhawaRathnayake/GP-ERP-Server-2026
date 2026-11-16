@@ -103,9 +103,28 @@ export function waitForChange(table: string): Promise<void> {
  * afterAll to put it back exactly, or remove it if it wasn't saved before.
  */
 export async function keepUserDropdown(code: string): Promise<() => Promise<void>> {
-  const saved = await db.userDropdown.findUnique({ where: { id: code } })
+  const saved = await db.userDropdown.findUnique({ where: { id: code }, include: { users: true, roles: true } })
   return async () => {
-    if (saved) await db.userDropdown.update({ where: { id: code }, data: saved })
-    else await db.userDropdown.deleteMany({ where: { id: code } })
+    if (!saved) {
+      await db.userDropdown.deleteMany({ where: { id: code } }) // its picks go with it (cascade)
+      return
+    }
+    const { users, roles, ...row } = saved
+    await db.$transaction([
+      db.userDropdown.update({ where: { id: code }, data: row }),
+      db.userDropdownUser.deleteMany({ where: { dropdownId: code } }),
+      db.userDropdownUser.createMany({ data: users }),
+      db.userDropdownRole.deleteMany({ where: { dropdownId: code } }),
+      db.userDropdownRole.createMany({ data: roles }),
+    ])
   }
+}
+
+/** Makes a user dropdown offer exactly these users (source = users). Pair it with keepUserDropdown. */
+export async function pickDropdownUsers(code: string, userIds: string[]) {
+  await db.$transaction([
+    db.userDropdown.upsert({ where: { id: code }, create: { id: code, source: "users" }, update: { source: "users" } }),
+    db.userDropdownUser.deleteMany({ where: { dropdownId: code } }),
+    db.userDropdownUser.createMany({ data: userIds.map((userId) => ({ dropdownId: code, userId })) }),
+  ])
 }
