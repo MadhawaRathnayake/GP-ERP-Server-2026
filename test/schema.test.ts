@@ -3,9 +3,9 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 
 // Every table ends with the audit columns, in this order (AGENTS.md → "How things are done here"). Session and
-// RolePermission are the exceptions.
+// the link tables (RolePermission, UserDropdownUser, UserDropdownRole) are the exceptions.
 const AUDIT_COLUMNS = ["createdBy", "createdAt", "modifiedBy", "modifiedAt", "isDeleted"]
-const EXEMPT = ["Session", "RolePermission"]
+const EXEMPT = ["Session", "RolePermission", "UserDropdownUser", "UserDropdownRole"]
 
 const schema = readFileSync(path.join(import.meta.dirname, "../prisma/schema.prisma"), "utf8")
 const models = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)].map(([, name, body]) => ({ name: name!, body: body! }))
