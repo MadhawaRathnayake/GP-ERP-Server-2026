@@ -26,7 +26,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     "/sales-managers",
     {
       schema: { response: { 200: dropdownUserList } },
-      config: { permission: "QUOTATIONS.VIEW", cache: ["UserDropdown", "User"] },
+      config: { permission: "QUOTATIONS.VIEW", cache: ["UserDropdown", "UserDropdownUser", "UserDropdownRole", "User"] },
     },
     () => listSalesManagers(),
   )

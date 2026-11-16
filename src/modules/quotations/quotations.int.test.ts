@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { App } from "#app.js"
 import { db } from "#core/db.js"
-import { cleanupTestUsers, keepUserDropdown, signIn, startApp, waitForChange, type TestUser } from "#test/helpers.js"
+import { cleanupTestUsers, keepUserDropdown, pickDropdownUsers, signIn, startApp, waitForChange, type TestUser } from "#test/helpers.js"
 import { getSettings } from "#modules/settings/settings.service.js"
 
 let app: App
@@ -38,16 +38,12 @@ beforeAll(async () => {
       data: { sku: `TEST-${stamp}`, title, categoryId, warrantyMonths: 12, trackingType: "quantity", price: 1000, cost: 700 },
     })
   ).id
-  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "Sri Lanka" } })).id
+  customerId = (await db.customer.create({ data: { code: `TEST-${stamp}`, type: "B2B", name: `Test Customer ${stamp}`, country: "LKA" } })).id
   vatRate = (await getSettings()).vatRate
   // Only user and seller can be picked as sales manager while this file runs; afterAll puts the real list back.
   restoreSalesManagers = await keepUserDropdown("SALES_MANAGER")
-  const changed = waitForChange("UserDropdown") // so no cached sales manager list from before is served
-  await db.userDropdown.upsert({
-    where: { id: "SALES_MANAGER" },
-    create: { id: "SALES_MANAGER", source: "users", userIds: [user.id, seller.id] },
-    update: { source: "users", userIds: [user.id, seller.id] },
-  })
+  const changed = waitForChange("UserDropdownUser") // so no cached sales manager list from before is served
+  await pickDropdownUsers("SALES_MANAGER", [user.id, seller.id])
   await changed
 })
 
@@ -55,9 +51,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.quotationItem.deleteMany({ where: { quotation: { customerId } } })
   await db.quotation.deleteMany({ where: { customerId } })
+  await db.serialItem.deleteMany({ where: { serialNumber: `TEST-Q-${stamp}` } })
   await restoreSalesManagers()
   await db.customer.deleteMany({ where: { code: `TEST-${stamp}` } })
-  await db.product.deleteMany({ where: { sku: `TEST-${stamp}` } })
+  await db.product.deleteMany({ where: { sku: { startsWith: `TEST-${stamp}` } } })
   await db.category.deleteMany({ where: { name: `TEST-${stamp}` } })
   await cleanupTestUsers()
   await app.close()
@@ -110,7 +107,7 @@ describe("quotations", () => {
       expect.objectContaining({
         lineNo: 1,
         productId,
-        product: { sku: `TEST-${stamp}`, description: "N/A", imageUrl: null },
+        product: { sku: `TEST-${stamp}`, description: null, imageUrl: null },
         description: title,
         quantity: 5,
         unitPrice: 950,
@@ -177,11 +174,11 @@ describe("quotations", () => {
 
   it("accepts the saved sales manager back unchanged after they leave the dropdown", async () => {
     const quotation = (await create(seller, { customerId, items: [{ productId, quantity: 1 }] })).json()
-    await db.userDropdown.update({ where: { id: "SALES_MANAGER" }, data: { userIds: [user.id] } })
+    await pickDropdownUsers("SALES_MANAGER", [user.id])
     const res = await patch(user, quotation.id, { salesManagerId: seller.id, notes: "Same manager" })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ salesManagerId: seller.id, notes: "Same manager" })
-    await db.userDropdown.update({ where: { id: "SALES_MANAGER" }, data: { userIds: [user.id, seller.id] } })
+    await pickDropdownUsers("SALES_MANAGER", [user.id, seller.id])
   })
 
   it("only edits or deletes an active quotation, but its status can still change", async () => {
@@ -225,14 +222,26 @@ describe("quotations", () => {
   })
 
   it("prices a service quotation by its charge, and turns it into a sales quotation with lines", async () => {
-    const references = { repairReceiveNoteId: "RRN-1", oldInvoiceId: "INV-1", oldSerialNumberId: "SN-1" }
+    // The unit is a link: the server copies its serial. An unknown one is refused.
+    const unit = await db.serialItem.create({ data: { productId, serialNumber: `TEST-Q-${stamp}` } })
+    const references = { repairReceiveNoteId: "RRN-1", oldSerialItemId: unit.id }
+    expect((await create(user, { customerId, type: "service", repairReceiveNoteId: "RRN-1", oldSerialItemId: 2147483647, serviceCharge: 5000 })).statusCode).toBe(400)
     const delivery = { paymentTerms: "advancePayment", deliveryLocation: "Colombo warehouse" }
     const withLines = await create(user, { customerId, type: "service", serviceCharge: 5000, items: [{ productId, quantity: 1 }] })
     expect(withLines.statusCode).toBe(400)
 
     const created = await create(user, { customerId, type: "service", ...references, ...delivery, serviceCharge: 5000 })
     expect(created.statusCode).toBe(201)
-    expect(created.json()).toMatchObject({ type: "service", ...references, ...delivery, troubleshootId: null, productModel: null })
+    expect(created.json()).toMatchObject({
+      type: "service",
+      ...references,
+      oldSerialNumber: `TEST-Q-${stamp}`,
+      oldInvoiceId: null,
+      oldInvoiceNumber: null,
+      ...delivery,
+      troubleshootId: null,
+      productModel: null,
+    })
     expect(created.json()).toMatchObject({
       serviceCharge: 5000,
       serviceTaxRate: vatRate,
@@ -246,16 +255,29 @@ describe("quotations", () => {
     expect(created.json().quotationNumber).toMatch(/^GPQ-\d{7,}$/)
 
     const id = created.json().id
-    const nulls = { repairReceiveNoteId: null, oldInvoiceId: null, oldSerialNumberId: null }
+    const nulls = { repairReceiveNoteId: null, oldInvoiceId: null, oldSerialItemId: null }
     expect((await patch(user, id, { type: "sales", ...nulls })).statusCode).toBe(400) // still has a charge, no lines
     const sales = await patch(user, id, { type: "sales", ...nulls, serviceCharge: null, items: [{ productId, quantity: 1 }] })
-    expect(sales.json()).toMatchObject({ type: "sales", ...nulls, serviceCharge: null, serviceTaxRate: null, subtotal: 1000 })
+    expect(sales.json()).toMatchObject({ type: "sales", ...nulls, oldSerialNumber: null, serviceCharge: null, serviceTaxRate: null, subtotal: 1000 })
   })
 
   it("only lets a sales quotation be a pre-order", async () => {
     const items = [{ productId, quantity: 1 }]
     expect((await create(user, { customerId, isPreOrdered: true, items })).json().isPreOrdered).toBe(true)
     expect((await create(user, { customerId, type: "warranty", isPreOrdered: true, items })).statusCode).toBe(400)
+  })
+
+  it("puts a serial-tracked product on one line, as its invoice needs it", async () => {
+    const product = await db.product.findUniqueOrThrow({ where: { id: productId }, select: { categoryId: true } })
+    const serialId = (
+      await db.product.create({
+        data: { sku: `TEST-${stamp}-S`, title, categoryId: product.categoryId, warrantyMonths: 12, trackingType: "serial", price: 1000, cost: 700 },
+      })
+    ).id
+    const twice = await create(user, { customerId, items: [{ productId: serialId, quantity: 2 }, { productId: serialId, quantity: 1 }] })
+    expect(twice.statusCode).toBe(400)
+    const quantityTwice = await create(user, { customerId, items: [{ productId, quantity: 2 }, { productId, quantity: 1 }] })
+    expect(quantityTwice.statusCode).toBe(201)
   })
 
   it("returns 404 for an unknown id", async () => {

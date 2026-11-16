@@ -20,14 +20,7 @@ export const dateOnly = z
 
 export const quotationStatus = z
   .enum([
-    "draft",
-    "pending",
-    "approved",
-    "rejected",
     "active",
-    "accepted",
-    "declined",
-    "expired",
     "cancelled",
     "cancelledAfterCredit",
     "cancelledAfterPayment",
@@ -49,7 +42,7 @@ export const quotationType = z
 
 export const paymentTerms = z.enum(["cashOnDelivery", "advancePayment"]).describe("How the customer pays; null = not set")
 
-// The statuses a user may set. The rest are set by the system or reserved for later (see schema.prisma).
+// The statuses a user may set. The rest are set by the system (see schema.prisma).
 const settableStatus = z.enum(["active", "cancelled", "creditConfirmed", "paymentConfirmed"])
 
 export const discountType = z
@@ -62,7 +55,7 @@ export const quotationItem = z.object({
   id: z.number().int(),
   lineNo: z.number().int(),
   productId: z.string(),
-  product: z.object({ sku: z.string(), description: z.string(), imageUrl: z.string().nullable() }),
+  product: z.object({ sku: z.string(), description: z.string().nullable(), imageUrl: z.string().nullable() }),
   description: z.string(),
   quantity: z.number().int(),
   unitPrice: money,
@@ -89,8 +82,10 @@ export const quotationSummary = z.object({
   type: quotationType,
   repairReceiveNoteId: z.string().nullable(),
   troubleshootId: z.string().nullable(),
-  oldInvoiceId: z.string().nullable(),
-  oldSerialNumberId: z.string().nullable(),
+  oldInvoiceId: z.number().int().nullable().describe("Service and warranty: the invoice the item was sold on"),
+  oldInvoiceNumber: z.string().nullable().describe("Its number; old-system text without a link on imported quotations"),
+  oldSerialItemId: z.number().int().nullable().describe("Service and warranty: the unit it is about"),
+  oldSerialNumber: z.string().nullable().describe("Its serial; old-system text without a link on imported quotations"),
   productModel: z.string().nullable(),
   paymentTerms: paymentTerms.nullable(),
   deliveryLocation: z.string().nullable(),
@@ -165,6 +160,8 @@ export const quotationItemInput = z
 
 // Ids from modules that aren't built yet (see quotations.types.ts), so any text for now.
 const referenceId = (what: string) => z.string().trim().min(1).max(100).nullable().describe(`${what} (module not built yet: not checked)`)
+// Links: the server copies the number (quotations.references.ts).
+export const referenceLink = (what: string) => z.number().int().positive().max(2147483647).nullable().describe(what)
 
 // Totals, status and the audit columns aren't here: zod drops them from a request.
 const quotationFields = z.object({
@@ -177,8 +174,8 @@ const quotationFields = z.object({
   type: quotationType,
   repairReceiveNoteId: referenceId("Repair received note, service only"),
   troubleshootId: referenceId("Troubleshoot, warranty only"),
-  oldInvoiceId: referenceId("Earlier invoice, service and warranty"),
-  oldSerialNumberId: referenceId("Serial number of the item, service and warranty"),
+  oldInvoiceId: referenceLink("Id of the finalized invoice the item was sold on; service and warranty"),
+  oldSerialItemId: referenceLink("Id of the unit (GET /serial-items); service and warranty"),
   productModel: z.string().trim().min(1).max(200).nullable().describe("Product model, typed by the user; warranty only"),
   paymentTerms: paymentTerms.nullable(),
   deliveryLocation: z.string().trim().min(1).max(500).nullable().describe("Where to deliver, typed by the user; any type"),
@@ -200,7 +197,7 @@ export const createQuotationBody = quotationFields
     repairReceiveNoteId: quotationFields.shape.repairReceiveNoteId.default(null),
     troubleshootId: quotationFields.shape.troubleshootId.default(null),
     oldInvoiceId: quotationFields.shape.oldInvoiceId.default(null),
-    oldSerialNumberId: quotationFields.shape.oldSerialNumberId.default(null),
+    oldSerialItemId: quotationFields.shape.oldSerialItemId.default(null),
     productModel: quotationFields.shape.productModel.default(null),
     paymentTerms: quotationFields.shape.paymentTerms.default(null),
     deliveryLocation: quotationFields.shape.deliveryLocation.default(null),

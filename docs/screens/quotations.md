@@ -7,7 +7,7 @@ migration `20261104074925_sale_quotations` is applied.
 
 | Area | File |
 |---|---|
-| Tables | `prisma/schema.prisma`: `Quotation`, `QuotationItem` (were `SaleQuotation`, `SaleQuotationItem`), enums `QuotationType`, `QuotationStatus`, `DiscountType`; `Setting.vatRate` |
+| Tables | `prisma/schema.prisma`: `Quotation`, `QuotationItem` (were `SaleQuotation`, `SaleQuotationItem`), enums `SalesDocumentType` (was `QuotationType`), `PaymentTerms`, `QuotationStatus`, `DiscountType`; `Setting.vatRate` |
 | Permissions | `src/platform/security/permissions.ts`: `QUOTATIONS.VIEW/CREATE/EDIT/DELETE/RESTORE/CONFIRM_PAYMENT/CONFIRM_CREDIT/UNDO_CONFIRMATION/CANCEL/REOPEN`; which action needs which: `src/modules/quotations/quotations.permissions.ts` (+ `.test.ts`) |
 | Amounts | `src/modules/quotations/quotations.amounts.ts` (+ `.test.ts`) |
 | API | `src/modules/quotations/quotations.schema.ts` · `.service.ts` · `.routes.ts` · `.errors.ts` · `.int.test.ts` |
@@ -33,8 +33,9 @@ migration `20261104074925_sale_quotations` is applied.
 - **Types.** `type` is `sales` (default; every quotation before 20261105140000), `service` or `warranty`. Each type
   has its own optional reference fields; the others must be null (400 on create/update, and the CHECK constraint
   `Quotation_type_fields_check`). Rules in `src/modules/quotations/quotations.types.ts` (+ `.test.ts`):
-  service → `repairReceiveNoteId`, `oldInvoiceId`, `oldSerialNumberId`; warranty → `troubleshootId`, `oldInvoiceId`,
-  `oldSerialNumberId`, `productModel` (text the user types). Changing the type is an edit (`EDIT`, active only) and
+  service → `repairReceiveNoteId`, `oldInvoiceId`, `oldSerialItemId`; warranty → `troubleshootId`, `oldInvoiceId`,
+  `oldSerialItemId`, `productModel` (text the user types). `oldInvoiceId` (a finalized invoice) and `oldSerialItemId` (a
+  unit) are links; the server copies their numbers into `oldInvoiceNumber` / `oldSerialNumber`. Changing the type is an edit (`EDIT`, active only) and
   must send null for the fields the new type can't have. **The referenced modules aren't built yet** (see AGENTS.md →
   "Modules not built yet"): the ids are unchecked text with no foreign key. `GET /?type=` filters by type.
 - **How each type is priced** (`quotations.types.ts` `contentProblems`, + `.test.ts`): sales and warranty quotations have

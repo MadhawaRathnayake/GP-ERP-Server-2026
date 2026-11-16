@@ -1,15 +1,16 @@
-import { Prisma, type QuotationStatus, type QuotationType } from "#generated/prisma/client.js"
+import { Prisma, type QuotationStatus, type SalesDocumentType } from "#generated/prisma/client.js"
 import { db } from "#core/db.js"
 import { BadRequestError, ForbiddenError, NotFoundError } from "#http/errors.js"
 import { paginate } from "#http/pagination.js"
 import type { Actor } from "#security/auth.plugin.js"
 import type { PermissionKey } from "#security/permissions.js"
 import { dropdownUsers, isDropdownUser } from "#modules/dropdowns/dropdowns.service.js"
-import { getSettings } from "#modules/settings/settings.service.js"
+import { getSettings, today } from "#modules/settings/settings.service.js"
 import { lineAmounts, quotationTotals, roundMoney, serviceTotals } from "./quotations.amounts.js"
 import { QuotationInvoicedError, QuotationNotActiveError } from "./quotations.errors.js"
 import { permissionsForChange } from "./quotations.permissions.js"
-import { contentProblems, fieldsNotAllowed, type QuotationContent } from "./quotations.types.js"
+import { referenceNumbers } from "./quotations.references.js"
+import { contentProblems, fieldsNotAllowed, FIELDS_OF_TYPE, type QuotationContent } from "./quotations.types.js"
 import type { CreateQuotationBody, ListQuotationsQuery, QuotationItemInput, UpdateQuotationBody } from "./quotations.schema.js"
 
 // A quotation and its lines are saved together. The server works out every amount from the lines (quotations.amounts.ts)
@@ -88,7 +89,13 @@ export async function createQuotation({ items, ...data }: CreateQuotationBody, a
 
   const { id } = await db.$transaction(async (tx) => {
     const quotation = await tx.quotation.create({
-      data: { ...data, quotationDate, ...pricing(data.type, data.serviceCharge, lines, vatRate), createdBy: actor.id },
+      data: {
+        ...data,
+        ...(await referenceNumbers(data, tx)),
+        quotationDate,
+        ...pricing(data.type, data.serviceCharge, lines, vatRate),
+        createdBy: actor.id,
+      },
     })
     await tx.quotationItem.createMany({ data: lines.map((line) => ({ ...line, quotationId: quotation.id, createdBy: actor.id })) })
     return quotation
@@ -128,7 +135,7 @@ export async function updateQuotation(
         repairReceiveNoteId: true,
         troubleshootId: true,
         oldInvoiceId: true,
-        oldSerialNumberId: true,
+        oldSerialItemId: true,
         productModel: true,
         serviceCharge: true,
         isPreOrdered: true,
@@ -157,6 +164,17 @@ export async function updateQuotation(
       isPreOrdered: data.isPreOrdered ?? before.isPreOrdered,
     })
     const repriced = lines !== undefined || data.type !== undefined || data.serviceCharge !== undefined
+    // A link's number is copied when the link changes; an unchanged one keeps its number (imported old-system text
+    // stays), and a type that can't have it clears it.
+    const references = await referenceNumbers(
+      {
+        oldInvoiceId: data.oldInvoiceId === before.oldInvoiceId ? undefined : data.oldInvoiceId,
+        oldSerialItemId: data.oldSerialItemId === before.oldSerialItemId ? undefined : data.oldSerialItemId,
+      },
+      tx,
+    )
+    if (!FIELDS_OF_TYPE[type].includes("oldInvoiceId")) references.oldInvoiceNumber = null
+    if (!FIELDS_OF_TYPE[type].includes("oldSerialItemId")) references.oldSerialNumber = null
 
     const modified = { modifiedBy: actor.id, modifiedAt: new Date() }
     if (lines) {
@@ -167,6 +185,7 @@ export async function updateQuotation(
       where: { id },
       data: {
         ...data,
+        ...references,
         status,
         ...(repriced && pricing(type, serviceCharge, lines ?? [], vatRate)),
         ...confirmedBy(before.status, after.status, actor),
@@ -220,10 +239,14 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
   const productIds = [...new Set(items.map((item) => item.productId))]
   const products = await db.product.findMany({
     where: { id: { in: productIds } },
-    select: { id: true, title: true, price: true, cost: true, isDeleted: true },
+    select: { id: true, sku: true, title: true, price: true, cost: true, trackingType: true, isDeleted: true },
   })
   const byId = new Map(products.map((product) => [product.id, product]))
   const taxRate = new Prisma.Decimal(vatRate)
+  // A serial-tracked product is on one line, as its invoice needs it (invoices.service.ts buildLines).
+  const serialProducts = items.map((item) => byId.get(item.productId)).filter((product) => product?.trackingType === "serial")
+  const twice = serialProducts.find((product, index) => serialProducts.indexOf(product) !== index)
+  if (twice) throw new BadRequestError(`${twice.sku} is tracked by serial number: put all of it on one line`)
 
   return items.map((item, index) => {
     const lineNo = index + 1
@@ -249,15 +272,9 @@ async function buildLines(items: QuotationItemInput[], vatRate: number) {
   })
 }
 
-/** Today's date in the company timezone, as a @db.Date value. */
-function today(timezone: string) {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date()) // en-CA gives YYYY-MM-DD
-  return new Date(`${day}T00:00:00.000Z`)
-}
-
 /** The totals, and the service VAT rate: from the service charge on a service quotation, from the lines otherwise. */
 function pricing(
-  type: QuotationType,
+  type: SalesDocumentType,
   serviceCharge: Prisma.Decimal | null,
   lines: Parameters<typeof quotationTotals>[0],
   vatRate: number,
@@ -269,12 +286,12 @@ function pricing(
   return { ...quotationTotals(lines), serviceTaxRate: null }
 }
 
-function assertContent(type: QuotationType, content: QuotationContent) {
+function assertContent(type: SalesDocumentType, content: QuotationContent) {
   const problems = contentProblems(type, content)
   if (Object.keys(problems).length > 0) throw new BadRequestError(Object.values(problems).join(". "), { fields: problems })
 }
 
-function assertTypeFields(type: QuotationType, values: Parameters<typeof fieldsNotAllowed>[1]) {
+function assertTypeFields(type: SalesDocumentType, values: Parameters<typeof fieldsNotAllowed>[1]) {
   const fields = fieldsNotAllowed(type, values)
   if (fields.length > 0) throw new BadRequestError(`A ${type} quotation can't have ${fields.join(", ")}`, { fields })
 }

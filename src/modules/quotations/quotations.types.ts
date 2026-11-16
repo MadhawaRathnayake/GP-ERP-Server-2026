@@ -1,4 +1,4 @@
-import type { QuotationType } from "#generated/prisma/client.js"
+import type { SalesDocumentType } from "#generated/prisma/client.js"
 
 // A quotation is for a sale, a service (repair) or a warranty claim. Sales and warranty quotations are priced by product
 // lines; a service quotation by its service charge alone (no lines). Only a sales quotation can be a pre-order.
@@ -7,23 +7,23 @@ import type { QuotationType } from "#generated/prisma/client.js"
 // "Quotation_service_charge_check" and "Quotation_pre_order_check"; that a service quotation has a charge and no lines,
 // and the others have lines, is checked only here (contentProblems).
 //
-// NOT BUILT YET: repairReceiveNoteId, troubleshootId, oldInvoiceId and oldSerialNumberId are ids from modules that
-// don't exist (repairs, troubleshoots, invoices, serial numbers). Until they do, they're optional free text that
-// nothing checks. productModel is plain text the user types, by design.
+// oldInvoiceId and oldSerialItemId are links to an invoice and a unit (quotations.references.ts copies their numbers).
+// NOT BUILT YET: repairReceiveNoteId and troubleshootId are ids from modules that don't exist (repairs, troubleshoots).
+// Until they do, they're optional free text that nothing checks. productModel is plain text the user types, by design.
 
-export const TYPE_FIELDS = ["repairReceiveNoteId", "troubleshootId", "oldInvoiceId", "oldSerialNumberId", "productModel"] as const
+export const TYPE_FIELDS = ["repairReceiveNoteId", "troubleshootId", "oldInvoiceId", "oldSerialItemId", "productModel"] as const
 
 export type TypeField = (typeof TYPE_FIELDS)[number]
 
 /** The reference fields each type may have. */
-export const FIELDS_OF_TYPE: Record<QuotationType, readonly TypeField[]> = {
+export const FIELDS_OF_TYPE: Record<SalesDocumentType, readonly TypeField[]> = {
   sales: [],
-  service: ["repairReceiveNoteId", "oldInvoiceId", "oldSerialNumberId"],
-  warranty: ["troubleshootId", "oldInvoiceId", "oldSerialNumberId", "productModel"],
+  service: ["repairReceiveNoteId", "oldInvoiceId", "oldSerialItemId"],
+  warranty: ["troubleshootId", "oldInvoiceId", "oldSerialItemId", "productModel"],
 }
 
 /** The fields set (not null) that `type` can't have. Empty when the combination is valid. */
-export function fieldsNotAllowed(type: QuotationType, values: Partial<Record<TypeField, string | null>>): TypeField[] {
+export function fieldsNotAllowed(type: SalesDocumentType, values: Partial<Record<TypeField, string | number | null>>): TypeField[] {
   return TYPE_FIELDS.filter((field) => values[field] != null && !FIELDS_OF_TYPE[type].includes(field))
 }
 
@@ -35,7 +35,7 @@ export interface QuotationContent {
 }
 
 /** Why the content doesn't fit the type, as { field: message }. Empty when it does. */
-export function contentProblems(type: QuotationType, { lineCount, hasServiceCharge, isPreOrdered }: QuotationContent) {
+export function contentProblems(type: SalesDocumentType, { lineCount, hasServiceCharge, isPreOrdered }: QuotationContent) {
   const problems: Record<string, string> = {}
   if (type === "service") {
     if (lineCount > 0) problems.items = "A service quotation has no product lines"

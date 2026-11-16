@@ -32,17 +32,17 @@ describe("contentProblems", () => {
 describe("fieldsNotAllowed", () => {
   it("allows no reference fields on a sales quotation", () => {
     expect(fieldsNotAllowed("sales", {})).toEqual([])
-    expect(fieldsNotAllowed("sales", { oldInvoiceId: "INV1", productModel: null })).toEqual(["oldInvoiceId"])
+    expect(fieldsNotAllowed("sales", { oldInvoiceId: 1, productModel: null })).toEqual(["oldInvoiceId"])
   })
 
   it("allows a service quotation its repair note, old invoice and serial number", () => {
-    expect(fieldsNotAllowed("service", { repairReceiveNoteId: "R1", oldInvoiceId: "INV1", oldSerialNumberId: "SN1" })).toEqual([])
+    expect(fieldsNotAllowed("service", { repairReceiveNoteId: "R1", oldInvoiceId: 1, oldSerialItemId: 2 })).toEqual([])
     expect(fieldsNotAllowed("service", { troubleshootId: "T1", productModel: "X200" })).toEqual(["troubleshootId", "productModel"])
   })
 
   it("allows a warranty quotation its troubleshoot, old invoice, serial number and product model", () => {
     expect(
-      fieldsNotAllowed("warranty", { troubleshootId: "T1", oldInvoiceId: "INV1", oldSerialNumberId: "SN1", productModel: "X200" }),
+      fieldsNotAllowed("warranty", { troubleshootId: "T1", oldInvoiceId: 1, oldSerialItemId: 2, productModel: "X200" }),
     ).toEqual([])
     expect(fieldsNotAllowed("warranty", { repairReceiveNoteId: "R1" })).toEqual(["repairReceiveNoteId"])
   })
